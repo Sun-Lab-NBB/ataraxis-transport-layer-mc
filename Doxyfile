@@ -1,0 +1,29 @@
+# This configuration file specifies how Doxygen should parse the docstrings inside the C++ source code files.
+# It is used as part of the tox-automated project building workflow to generate API documentation for the library.
+# Currently, this file provides the minimal configuration necessary to build the .xml documentation file that is then
+# parsed and used by sphinx to render the static .html page via 'breathe' bridge.
+
+DOXYFILE_ENCODING      = UTF-8
+PROJECT_NAME           = "ataraxis-micro-controller"
+OUTPUT_DIRECTORY       = docs/source/doxygen
+OUTPUT_LANGUAGE        = English
+INPUT                  = src/cobs_processor.h \
+                         src/crc_processor.h \
+                         src/transport_layer.h \
+                         src/shared_assets.h \
+                         src/stream_mock.h \
+                         src/module.h \
+                         src/kernel.h \
+                         src/communication.h \
+                         src/modules/break_module.h \
+                         src/modules/encoder_module.h \
+                         src/modules/lick_module.h \
+                         src/modules/ttl_module.h \
+                         src/modules/valve_module.h \
+                         src/modules/torque_module.h
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+PREDEFINED             = PACKED_STRUCT=

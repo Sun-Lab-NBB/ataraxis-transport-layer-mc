@@ -1,7 +1,7 @@
-# ataraxis-micro-controller
+# ataraxis-transport-layer-mc
 
-A C++ library for Arduino and Teensy microcontrollers that integrates user-defined hardware modules with Python clients
-running Ataraxis software.
+A C++ library for Arduino and Teensy microcontrollers that provides methods for establishing and maintaining 
+bidirectional communication with host-computers over USB or UART serial interfaces.
 
 ![c++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=C%2B%2B&logoColor=white)
 ![arduino](https://img.shields.io/badge/Arduino-00878F?logo=arduino&logoColor=fff&style=plastic)
@@ -10,34 +10,22 @@ running Ataraxis software.
 ___
 
 ## Detailed Description
-
-This library supports the concurrent operation of many unique user-defined hardware modules by providing communication 
-and task scheduling services. In turn, this allows developers to focus on implementing the modules, instead of worrying 
-about data transmission and control flow. This is achieved via the 2 main parts of the library: the TransportLayer class
-and the microcontroller Core classes (Communication, Kernel, and Module).
-
-The TransportLayer provides the serial protocol for bidirectionally communicating with a host-computer running the 
-[ataraxis-transport-layer](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer) Python library. It is tuned 
-for performance, achieving microsecond communication speeds while ensuring the integrity of transmitted payloads. While 
-the class is originally designed to support the microcontroller Core classes, it can also be used as a standalone 
-module for independent projects.
-
-The microcontroller Core provides the framework that integrates user-defined hardware with Python clients. To do so, it 
-defines a shared API that can be integrated into user-defined modules by subclassing the (base) Module class. It also 
-provides the Kernel class that manages task scheduling during runtime, and the Communication class, which allows custom 
-modules to communicate to Python clients via the TransportLayer binding.
+This is a C++ implementation of the ataraxis-transport-layer (AXTL) library designed to run on Arduino or Teensy 
+microcontrollers. It provides methods for bidirectionally communicating with a host-computer running the 
+[ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer) companion library written in 
+Python. This library is designed to support time-critical applications, and can achieve microsecond communication speeds
+for newer microcontroller-PC configurations.
 ___
 
 ## Features
 
-- Supports Arduino and Teensy microcontrollers built on 
-[ARM architecture](https://en.wikipedia.org/wiki/Atmel_ARM-based_processors#Products).
-- Provides an easy-to-implement API that integrates any user-defined hardware with Python clients running Ataraxis
-  software.
-- Uses robust communication protocol that ensures data integrity via the Circular Redundancy Check (up to CRC-32) and 
-  Consistent Overhead Byte Stuffing payload encoding.
-- Abstracts communication and microcontroller runtime management through a set of Core classes that can be tuned to 
-  optimize latency or throughput.
+- Supports all Arduino and Teensy architectures and platforms.
+- Only minor modifications are needed to add support for more architectures / platforms.
+- Uses Consistent Overhead Byte Stuffing (COBS) to encode payloads.
+- Supports Circular Redundancy Check (CRC) 8-, 16- and 32-bit polynomials to ensure data integrity during transmission.
+- Fully configurable through Constructor and Template parameters.
+- Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) libray written in Python to simplify 
+  PC-MicroController communication.
 - GPL 3 License.
 ___
 
@@ -57,20 +45,16 @@ ___
 ## Dependencies
 
 ### Main Dependency
-- An IDE or Framework capable of uploading microcontroller software. Use [Platformio](https://platformio.org/install) if
-  you want to use the project the way it was built, tested, and used by the authors. Overall, it is highly encouraged to
-  at least give this framework a try, as it greatly simplifies working with embedded projects.
-  Alternatively, [Arduino IDE](https://www.arduino.cc/en/software) is also fully compatible with this project and
-  satisfies this dependency, although its use is discouraged.
+- An IDE or Framework capable of uploading microcontroller software. This library is designed to be used with
+  [Platformio,](https://platformio.org/install) and it is strongly encouraged to use this IDE. Alternatively,
+  [Arduino IDE](https://www.arduino.cc/en/software) is also fully compatible with this project and satisfies this 
+  dependency, but is not officially supported and, therefore, is not recommended for most users.
 
 ### Additional Dependencies
 These dependencies will be automatically resolved whenever the library is installed via Platformio. ***They are 
 mandatory for all other IDEs / Frameworks!***
 
-- [digitalWriteFast](https://github.com/ArminJo/digitalWriteFast).
-- [elapsedMillis](https://github.com/pfeerick/elapsedMillis/blob/master/elapsedMillis.h).
-- [Encoder](https://github.com/PaulStoffregen/Encoder). This dependency is **optional** if you do not intend to use the 
-  default EncoderModule class.
+- [elapsedMillis](https://github.com/pfeerick/elapsedMillis/blob/master/elapsedMillis.h)
 
 For developers, see the [Developers](#developers) section for information on installing additional development 
 dependencies.
@@ -87,18 +71,16 @@ below assume you are ***not*** a developer.
 1. Download this repository to your local machine using your preferred method, such as Git-cloning. Optionally, use one
    of the stable releases from [GitHub](https://github.com/Sun-Lab-NBB/ataraxis-micro-controller).
 2. Remove the '[main.cpp](./src/main.cpp)' file from the 'src' directory of the project.
-3. Move all remaining '[src](./src)' contents, required by your project, into the appropriate destination 
-   ('include,' 'src' or 'libs') directory of your project.
-4. Add header file inclusions to the files that need access to the classes from this library, e.g.: 
-   ```include <module.h>```.
+3. Move all remaining '[src](./src)' contents into the appropriate destination ('include,' 'src' or 'libs') directory 
+   of your project.
+4. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access classes from this library.
 
 ### Platformio
 
 1. Navigate to your platformio.ini file and add the following line to your target environment specification:
-   ```lib_deps = inkaros/ataraxis-micro-controller@^1.0.0```. If you already have lib_deps specification, add the 
+   ```lib_deps = inkaros/ataraxis-transport-layer-pc@^1.0.0```. If you already have lib_deps specification, add the 
    library specification to the existing list of used libraries.
-2. Add ```include <ataraxis_micro_controller.h>``` to the top of the file(s) that need to access classes from this 
-   library.
+2. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access classes from this library.
 ___
 
 ## Usage
@@ -253,228 +235,12 @@ uint16_t next_index = tl_class.ReadData(value);
 uint16_t next_index = tl_class.ReadData(array, next_index);
 uint16_t next_index = tl_class.ReadData(test_structure, next_index);
 ```
-
-### Communication
-
-The Communication class provides a high-level interface for bidirectional communication between a microcontroller
-(e.g., Arduino, Teensy) and a PC over a serial USB or UART port. To do so, it wraps the **TransportLayer** class and
-uses it to serialize and transmit data using one of the predefined message layout protocols to determine payload
-microstructure.
-
-This class is tightly integrated with the Kernel and (base) Module classes, together forming the 'Core Triad' of the
-AtaraxisMicroController library. Therefore, it is specifically optimized to transfer data between Kernel, Modules, and
-their PC interfaces.
-
-#### Prototypes
-Prototypes are byte-codes packaged in Message packets that specify the data structure object that can be used to parse
-the included object data.Currently, there are only six prototype codes supported, which define the types of data that can
-be transmitted. All messages sent must conform to one of the supported prototype codes. The Prototype codes and the types 
-of objects they encode are available from **communication_assets**. For prototype codes to work as expected, the microcontroller
-and the PC need to share the same `prototype_code` to object mapping. \
-Here’s an example of sending a message using a prototype code that specifies a  `TwoUnsignedBytes` object:
-```
-//TwoUnsignedBytes
-uint8_t test_object[2] = {0}; 
-
-const uint8_t module_type = 112;       // Example module type
-const uint8_t module_id = 12;          // Example module ID
-const uint8_t command = 88;            // Example command code
-const uint8_t event_code = 221;        // Example event code
-const communication_assets::kPrototypes prototype = communication_assets::kPrototypes::kTwoUnsignedBytes;
-
-comm_class.SendDataMessage(command, event_code, prototype, test_object);
-```
-
-#### Outgoing Message Structures
-
-The Communication class supports sending a fixed number of predefined message payload structures, each optimized for
-a specific use case.
-
-Each message type is associated with a unique message protocol code, which is used to instruct the receiver on how to
-parse the message. The Communication class automatically handles the parsing and serialization of these message formats.
-
-- **ModuleData:** Communicates the event state-code of the sender Module and includes an additional data object.\
-  Use `SendDataMessage` to send Module messages to the PC. This method is specialized to send Module messages. 
-
-```
-Communication comm_class(Serial);  // Instantiates the Communication class.
-Serial.begin(9600);  // Initializes serial interface.
-
-const uint8_t module_type = 112        // Example module type
-const uint8_t module_id = 12;          // Example module ID
-const uint8_t command = 88;            // Example command code
-const uint8_t event_code = 221;        // Example event code
-const uint8_t prototype = 1;           // Prototype for OneUnsignedByte. Protocol codes are available from
-                                       // communication_assets namespace.
-const uint8_t test_object = 1;  // OneUnsignedByte
-
-comm.SendDataMessage(module_type, module_id, command, event_code, prototype, test_object );
-```
-
-- **KernelData:** Similar to ModuleData, but used for messages sent by the Kernel.
-  There is an overloaded version of `SendDataMessage` that does not take `module_type` and `module_id` arguments,
-  which allows sending data messages from the Kernel class.
-```
-Communication comm_class(Serial);  // Instantiates the Communication class.
-Serial.begin(9600);  // Initializes serial interface.
-
-const uint8_t command = 88;            // Example command code
-const uint8_t event_code = 221;        // Example event code
-const uint8_t prototype = 1;           // Prototype for OneUnsignedByte. Protocol codes are available from
-                                       // communication_assets namespace.
-const uint8_t test_object = 1;  // OneUnsignedByte
-
-comm.SendDataMessage(command, event_code, prototype, test_object );
-```
-
-- **ModuleState:** Used for sending event state codes from modules without additional data.\
-  Use `SendStateMessage` to send Module states to the PC. This method is specialized to send Module messages. It
-  packages the input data into the ModuleState structure and sends it to the connected PC.
-```
-Communication comm_class(Serial);  // Instantiates the Communication class.
-Serial.begin(9600);  // Initializes serial interface.
-
-const uint8_t module_type = 112        // Example module type
-const uint8_t module_id = 12;          // Example module ID
-const uint8_t command = 88;            // Example command code
-const uint8_t event_code = 221;        // Example event code
-
-comm_class.SendStateMessage(module_type, module_id, command, event_code);
-```
-
-- **KernelState:** Similar to ModuleState, but used for Kernel messages.\
-  There is an overloaded version of  `SendStateMessage` that only takes `command` and `event_code` arguments, which
-  allows sending data messages from the Kernel class.
-```
-Communication comm_class(Serial);  // Instantiates the Communication class.
-Serial.begin(9600);  // Initializes serial interface.
-
-const uint8_t command = 88;            // Example command code
-const uint8_t event_code = 221;        // Example event code
-
-comm_class.SendStateMessage(command, event_code);
-```
-
-#### Incoming Message Structures
-When receiving incoming messages, there are two key functions to keep in mind:
-- `ExtractModuleParameters()` extracts the parameter data transmitted with the ModuleParameters message and uses it to set
-the input structure values. This method will fail if it is called for any other message type, including KernelParameters 
-message.
-- The method `ReceiveMessage()` parses the next available message received from the PC and stored inside the serial port 
-reception buffer. If the received message is a ModuleParameters message, call `ExtractModuleParameters()` method to
-finalize message parsing since `ReceiveMessage()` DOES NOT extract Module parameter data from the received message.
-
-```
-Communication comm_class(Serial);  // Instantiates the Communication class.
-Serial.begin(9600);  // Initializes serial interface.
-
-comm_class.ReceviveMessage(); 
-
-struct DataMessage
-{
-uint8_t id = 1;
-uint8_t data = 10;
-} data_message;
-
-bool success = comm_class.ExtractParameters(data_message);
-```
-
-#### Commands
-This class supports various command types for controlling the behavior of modules and the Kernel. These commands
-are sent through this class and are specified within different message types (e.g., **ModuleData**, **KernelData**). 
-Each command typically contains a **command code**, which is a unique identifier for the operation to perform. Commands
-can also include **return codes** to notify the sender that the command was received and processed successfully.
-
-- **Module Commands**: These commands are sent to specific modules to perform certain actions. There are three main types:
-    - **RepeatedModuleCommand**: A command that runs repeatedly or in cycles. It allows controlling module behavior
-      on a timed interval.
-    ```
-    Communication comm_class(Serial);  // Instantiates the Communication class.
-    Serial.begin(9600);  // Initializes serial interface.
-
-    struct DataMessage
-    {
-    uint8_t id = 1;
-    uint8_t data = 10;
-    } data_message;
-
-    comm_class.ReceviveMessage(); 
-    comm_class.ExtractParameters(data_message);
-    
-    uint8_t module_type = static_cast<uint8_t>(comm_class.repeated_module_command.module_type);  // Extract module_type
-    uint8_t module_id = static_cast<uint8_t>(comm_class.repeated_module_command.module_id);      // Extract module_id
-    uint8_t return_code = static_cast<uint8_t>( comm_class.repeated_module_command.return_code); // Extract return_code
-    uint8_t command = static_cast<uint8_t>(comm_class.repeated_module_command.command);          // Extract command
-    bool noblock = static_cast<uint8_t>(comm_class.repeated_module_command.noblock);             // Extract noblock
-    uint32_t cycle_delay = static_cast<uint32_t>(comm_class.repeated_module_command.cycle_delay);// Extract cycle_delay
-    ```
-
-    - **OneOffModuleCommand**: A single execution command that instructs the addressed Module to run the specified command
-      exactly once (non-recurrently).
-    ```
-    Communication comm_class(Serial);  // Instantiates the Communication class.
-    Serial.begin(9600);  // Initializes serial interface.
-
-    struct DataMessage
-    {
-    uint8_t id = 1;
-    uint8_t data = 10;
-    } data_message;
-    
-    comm_class.ReceviveMessage(); 
-    comm_class.ExtractParameters(data_message);
-    
-    uint8_t module_type = static_cast<uint8_t>(comm_class.one_off_module_command.module_type);  // Extract module_type
-    uint8_t module_id = static_cast<uint8_t>(comm_class.one_off_module_command.module_id);      // Extract module_id
-    uint8_t return_code = static_cast<uint8_t>( comm_class.one_off_module_command.return_code); // Extract return_code
-    uint8_t command = static_cast<uint8_t>(comm_class.one_off_module_command.command);          // Extract command
-    bool noblock = static_cast<bool>(comm_class.one_off_module_command.noblock);                // Extract noblock
-    ```
-    - **DequeModuleCommand**: A command that instructs the addressed Module to clear (empty) its command queue. Note that
-      this does not terminate any active commands, and any active commands will eventually be allowed to finish.
-    ```
-    Communication comm_class(Serial);  // Instantiates the Communication class.
-    Serial.begin(9600);  // Initializes serial interface.
-
-    struct DataMessage
-    {
-    uint8_t id = 1;
-    uint8_t data = 10;
-    } data_message;
-    
-    comm_class.ReceviveMessage(); 
-    comm_class.ExtractParameters(data_message);
-    
-    uint8_t module_type = static_cast<uint8_t>(comm_class.module_dequeue.module_type);    // Extract module_type
-    uint8_t module_id = static_cast<uint8_t>(comm_class.module_dequeue.module_id);        // Extract module_id
-    uint8_t return_code = static_cast<uint8_t>( comm_class.module_dequeue.return_code);   // Extract return_code
-    ```
-
-- **Kernel Commands**: These are commands sent to the Kernel to perform system-level operations. These commands are
-  always one-off and execute immediately upon receipt.
-```
-Communication comm_class(Serial);  // Instantiates the Communication class.
-Serial.begin(9600);  // Initializes serial interface.
-
-struct DataMessage
-{
-uint8_t id = 1;
-uint8_t data = 10;
-} data_message;
-
-comm_class.ReceviveMessage(); 
-comm_class.ExtractParameters(data_message);
-
-uint8_t return_code = static_cast<uint8_t>( comm_class.module_dequeue.return_code);   // Extract return_code
-uint8_t command = static_cast<uint8_t>(comm_class.repeated_module_command.command);   // Extract command
-```
 ___
 
 ## API Documentation
 
-See the [API documentation](https://ataraxis-micro-controller-api-docs.netlify.app/) for the detailed description of 
-the methods and classes exposed by components of this library. The API documentation includes the custom hardware 
-modules shipped with the library.
+See the [API documentation](https://ataraxis-transport-layer-api-docs.netlify.app/) for the detailed description of 
+the methods and classes exposed by components of this library.
 ___
 
 ## Developers
@@ -505,8 +271,8 @@ the platformio.ini file to support your target microcontroller by configuring a 
 In addition to installing platformio and main project dependencies, additionally install the following dependencies:
 
 - [Tox](https://tox.wiki/en/4.15.0/user_guide.html), if you intend to use preconfigured tox-based project automation.
-- [Doxygen](https://www.doxygen.nl/manual/install.html), if you want to generate C++ code documentation. Note, if you
-  are not installing Tox, you will also need [Breathe](https://breathe.readthedocs.io/en/latest/) and
+- [Doxygen](https://www.doxygen.nl/manual/install.html), if you want to generate C++ code documentation. ***Note***, if 
+  you chose not to install Tox, you will also need [Breathe](https://breathe.readthedocs.io/en/latest/) and
   [Sphinx](https://docs.readthedocs.io/en/stable/intro/getting-started-with-sphinx.html).
 
 ### Development Automation
@@ -534,6 +300,7 @@ Below is a list of all available commands and their purpose:
 ## Authors
 
 - Ivan Kondratyev ([Inkaros](https://github.com/Inkaros))
+- Jasmine Si
 
 ## License
 
@@ -541,8 +308,8 @@ This project is licensed under the GPL3 License: see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- All Sun Lab [WEBSITE LINK STUB] members for providing the inspiration and comments during the development of this
-  library.
+- All [Sun Lab](https://neuroai.github.io/sunlab/) members for providing the inspiration and comments during the 
+  development of this library.
 - [PowerBroker2](https://github.com/PowerBroker2) and his 
 [SerialTransfer](https://github.com/PowerBroker2/SerialTransfer) for inspiring this library and serving as an example 
 and benchmark. Check SerialTransfer as a good alternative with non-overlapping functionality that may be better for your

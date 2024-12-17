@@ -10,7 +10,7 @@ OUTPUT_LANGUAGE        = English
 INPUT                  = src/cobs_processor.h \
                          src/crc_processor.h \
                          src/transport_layer.h \
-                         src/shared_assets.h \
-                         src/stream_mock.h \
+                         src/axtlmc_shared_assets.h \
+                         src/stream_mock.h
 GENERATE_XML           = YES
 XML_OUTPUT             = xml

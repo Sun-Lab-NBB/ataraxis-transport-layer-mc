@@ -5,25 +5,31 @@ Transport Layer
 ===============
 
 .. doxygenfile:: transport_layer.h
-   :project: ataraxis-micro-controller
+   :project: ataraxis-transport-layer-mc
 
-Helper Classes
-==============
+Helper Assets
+=============
 
 COBS Processor
 --------------
 
 .. doxygenfile:: cobs_processor.h
-   :project: ataraxis-micro-controller
+   :project: ataraxis-transport-layer-mc
 
 CRC Processor
 -------------
 
 .. doxygenfile:: crc_processor.h
-   :project: ataraxis-micro-controller
+   :project: ataraxis-transport-layer-mc
 
 Stream Mock
 -----------
 
 .. doxygenfile:: stream_mock.h
-   :project: ataraxis-micro-controller
+   :project: ataraxis-transport-layer-mc
+
+Shared Assets
+-------------
+
+.. doxygenfile:: axtlmc_shared_assets.h
+   :project: ataraxis-transport-layer-mc

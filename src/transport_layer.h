@@ -71,6 +71,48 @@
 #include "cobs_processor.h"
 #include "crc_processor.h"
 
+// Statically defines the size of the Serial class reception buffer associated with different Arduino and Teensy board
+// architectures. This is required to ensure the TransportLayer class is configured appropriately. If you need to adjust
+// the TransportLayer class buffers (for example, because you manually increased the buffer size used by the Serial
+// class of your board), do it by editing or specifying a new preprocessor directive below. It is HIGHLY advised not to
+// tamper with these settings, however, and to always have the kSerialBufferSize set exactly to the size of the Serial
+// class reception buffer.
+#if defined(ARDUINO_ARCH_SAM)
+// Arduino Due (USB serial) maximum reception buffer size in bytes.
+static constexpr uint16_t kSerialBufferSize = 256;
+
+#elif defined(ARDUINO_ARCH_SAMD)
+// Arduino Zero, MKR series (USB serial) maximum reception buffer size in bytes.
+static constexpr uint16_t kSerialBufferSize = 256;
+
+#elif defined(ARDUINO_ARCH_NRF52)
+// Arduino Nano 33 BLE (USB serial) maximum reception buffer size in bytes.
+static constexpr uint16_t kSerialBufferSize = 256;
+
+// Note, teensies are identified based on the processor model. This would need to be updated for future versions of
+// Teensy boards.
+#elif defined(CORE_TEENSY)
+#if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__) || \
+    defined(__IMXRT1062__)
+// Teensy 3.x, 4.x (USB serial) maximum reception buffer size in bytes.
+static constexpr uint16_t kSerialBufferSize = 1024;
+#else
+// Teensy 2.0, Teensy++ 2.0 (USB serial) maximum reception buffer size in bytes.
+static constexpr uint16_t kSerialBufferSize = 256;
+#endif
+
+#elif defined(ARDUINO_AVR_UNO) || defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA) ||  \
+    defined(__AVR_ATmega328P__) || defined(__AVR_ATmega32U4__) || defined(__AVR_ATmega2560__) || \
+    defined(__AVR_ATmega168__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega16U4__)
+// Arduino Uno, Mega, and other AVR-based boards (UART serial) maximum reception buffer size in bytes.
+static constexpr uint16_t kSerialBufferSize = 64;
+
+#else
+// Default fallback for unsupported boards is the reasonable minimum buffer size
+static constexpr uint16_t kSerialBufferSize = 64;
+
+#endif
+
 /**
  * @class TransportLayer
  * @brief Exposes methods that can be used to send and receive serialized data over the USB or UART transmission
@@ -111,7 +153,7 @@
  * @tparam kMaximumTransmittedPayloadSize The maximum size of the payload that is expected to be transmitted during
  * class runtime. Note, the number is capped to 254 bytes due to COBS protocol, and it is used to determine the size of
  * the _transmission_buffer array. Use this number to indirectly control the memory reserved by the _transmission_buffer
- * (at a maximum of 254 + 4 = 258 bytes).
+ * (at a maximum of 254 + 8 = 262 bytes).
  * @tparam kMaximumReceivedPayloadSize The maximum size of the payload that is expected to be received during class
  * runtime. Works the same way as kMaximumTransmittedPayloadSize, but allows to independently control the size of the
  * _reception_buffer.
@@ -120,7 +162,7 @@
  * reception buffer to trigger a reception procedure (and for the class Available() method to return 'true'). This
  * maximizes the chances of each ReceiveData() method call to return a valid packet. This optimization is intended
  * for some platforms to save CPU time by not wasting it on running reception attempts that are unlikely to succeed.
- * Note, this value has to be between 1 and 254. Defaults to 1.
+ * Note, this value has to be between 1 and 254.
  *
  * Example instantiation:
  * @code
@@ -150,10 +192,10 @@
  * @endcode
  */
 template <
-    typename PolynomialType,
-    const uint8_t kMaximumTransmittedPayloadSize = 254,
-    const uint8_t kMaximumReceivedPayloadSize    = 254,
-    const uint8_t kMinimumPayloadSize            = 1>
+    typename PolynomialType                      = uint8_t,                          // Defaults to uint8_t polynomials
+    const uint8_t kMaximumTransmittedPayloadSize = min(kSerialBufferSize - 8, 254),  // Intelligently caps at 254 bytes
+    const uint8_t kMaximumReceivedPayloadSize    = min(kSerialBufferSize - 8, 254),  // Intelligently caps at 254 bytes
+    const uint8_t kMinimumPayloadSize            = 1>  // 1 essentially means no cap
 class TransportLayer
 {
         // Ensures that the class only accepts uint8, 16 or 32 as valid CRC types, as no other type can be used to
@@ -210,24 +252,24 @@ class TransportLayer
          * used to transmit and receive the serialized data.
          * @param crc_polynomial The polynomial to use for the generation of the CRC lookup table used by the internal
          * CRCProcessor class. Can be provided as an appropriately sized HEX number (e.g., 0x1021). Note, currently only
-         * non-reversed polynomials are supported. Defaults to 0x1021 (CRC-16 CCITT-FAlSE).
+         * non-reversed polynomials are supported.
          * @param crc_initial_value The initial value to which the CRC checksum variable is initialized during
          * calculation. This value is based on the polynomial parameter. Can be provided as an appropriately sized
-         * HEX number (e.g., 0xFFFF). Defaults to 0xFFFF (CRC-16 CCITT-FAlSE).
+         * HEX number (e.g., 0xFFFF).
          * @param crc_final_xor_value The final XOR value to be applied to the calculated CRC checksum value. This
          * value is based on the polynomial parameter. Can be provided as an appropriately sized HEX number
-         * (e.g., 0x0000). Defaults to 0x0000 (CRC-16 CCITT-FAlSE).
+         * (e.g., 0x0000).
          * @param start_byte The byte-range value (from 0 through 255) to be used as the start byte of each transmitted
          * and received packet. The presence of this value inside the incoming byte-stream instructs the receiver to
          * enter packet parsing mode. This value ideally should be different from the delimiter_byte to maintain higher
          * packet reliability, but it does not have to be. Also, it is advised to use a value that is unlikely to be
-         * encountered due to random communication line noise. Defaults to 129.
+         * encountered due to random communication line noise.
          * @param delimiter_byte The byte-range value (from 0 through 255) to be used as the delimiter (stop) byte of
          * each packet. Encountering a delimiter_byte value is the only non-error way of ending the packet reception
          * loop. During packet construction, this value is eliminated from the payload using COBS encoding.
          * It is advised to use the value of 0x00 (0) as this is the only value that is guaranteed to not occur
          * anywhere in the packet. All other values may also show up as the overhead byte
-         * (see COBSProcessor documentation for more details). Defaults to 0.
+         * (see COBSProcessor documentation for more details).
          * @param timeout The number of microseconds to wait between receiving any two consecutive bytes of the packet.
          * The algorithm uses this value to detect stale packets, as it expects all bytes of the same packet to arrive
          * close in time to each other. Primarily, this is a safeguard to break out of stale packet reception cycles
@@ -236,7 +278,7 @@ class TransportLayer
          * unable to find the start_byte value in the incoming byte-stream. It is advised to keep this set to False for
          * most use cases. This is because it is fairly common to see noise-generated bytes inside the reception buffer
          * that are then silently cleared by the algorithm until a real packet becomes available. However, enabling this
-         * option may be helpful for certain debugging scenarios. Defaults to False.
+         * option may be helpful for certain debugging scenarios.
          *
          * Example instantiation:
          * @code
@@ -267,9 +309,9 @@ class TransportLayer
          */
         explicit TransportLayer(
             Stream& communication_port,
-            const PolynomialType crc_polynomial      = 0x1021,
-            const PolynomialType crc_initial_value   = 0xFFFF,
-            const PolynomialType crc_final_xor_value = 0x0000,
+            const PolynomialType crc_polynomial      = 0x07,
+            const PolynomialType crc_initial_value   = 0x00,
+            const PolynomialType crc_final_xor_value = 0x00,
             const uint8_t start_byte                 = 129,
             const uint8_t delimiter_byte             = 0,
             const uint32_t timeout                   = 20000,
@@ -287,6 +329,27 @@ class TransportLayer
             // Sets the start_byte placeholder to the actual start byte value. This is set at class instantiation and
             // kept constant throughout the lifetime of the class.
             _transmission_buffer[0] = kStartByte;
+
+            // Ensures that the requested reception and transmission buffers do not exceed the microcontroller's serial
+            // buffer size.
+            static_assert(
+                kTransmissionBufferSize <= kSerialBufferSize,
+                "TransportLayer's transmission buffer size exceeds the serial buffer size for this type for "
+                "microcontroller boards. If you manually increased the serial buffer size, edit the preprocessor "
+                "directives at the top of the transport_layer.h file. Otherwise, set the "
+                "kMaximumTransmittedPayloadSize template argument of the TransportLayer class to the value appropriate "
+                "for your microcontroller board. Note, in addition to the payload, the buffer may need up to 8 extra "
+                "bytes to store packet metadata."
+            );
+            static_assert(
+                kReceptionBufferSize <= kSerialBufferSize,
+                "TransportLayer's reception buffer size exceeds the serial buffer size for this type for "
+                "microcontroller boards. If you manually increased the serial buffer size, edit the preprocessor "
+                "directives at the top of the transport_layer.h file. Otherwise, set the "
+                "kMaximumReceivedPayloadSize template argument of the TransportLayer class to the value appropriate "
+                "for your microcontroller board. Note, in addition to the payload, the buffer may need up to 8 extra "
+                "bytes to store packet metadata."
+            );
         }
 
         /**

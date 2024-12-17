@@ -6,7 +6,7 @@ establishing and maintaining bidirectional communication with PC clients over US
 
 This library has a companion library written in Python
 (`ataraxis-transport-layer-pc <https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc>`_), intended for
-host-computers participating in the serialized communication over the transport layer.
+PCs participating in the serialized communication over the transport layer.
 
 This library is part of the broader 'Ataraxis' science-automation project, developed in the
 `Sun Lab <https://neuroai.github.io/sunlab/>`_ at Cornell University.

@@ -10,7 +10,7 @@ bidirectional communication with PC clients over USB or UART serial interfaces.
 ___
 
 ## Detailed Description
-This is a C++ implementation of the ataraxis-transport-layer (AXTL) library designed to run on Arduino or Teensy 
+This is a C++ implementation of the ataraxis-transport-layer (AXTL) library, designed to run on Arduino or Teensy 
 microcontrollers. It provides methods for bidirectionally communicating with a host-computer running the 
 [ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer) companion library written in 
 Python. The library abstracts most steps necessary for data transmission, such as serializing data into payloads, 
@@ -22,11 +22,11 @@ ___
 
 ## Features
 
-- Supports all Arduino and Teensy architectures and platforms.
-- Only minor modifications are needed to add support for more architectures / platforms.
+- Supports all recent Arduino and Teensy architectures and platforms.
 - Uses Consistent Overhead Byte Stuffing (COBS) to encode payloads.
 - Supports Circular Redundancy Check (CRC) 8-, 16- and 32-bit polynomials to ensure data integrity during transmission.
 - Fully configurable through Constructor and Template parameters.
+- Contains many sanity checks performed at compile time to reduce the potential for data corruption or loss in transit.
 - Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) libray written in Python to simplify 
   PC-MicroController communication.
 - GPL 3 License.
@@ -49,9 +49,9 @@ ___
 
 ### Main Dependency
 - An IDE or Framework capable of uploading microcontroller software. This library is designed to be used with
-  [Platformio,](https://platformio.org/install) and it is strongly encouraged to use this IDE. Alternatively,
-  [Arduino IDE](https://www.arduino.cc/en/software) is also fully compatible with this project and satisfies this 
-  dependency, but is not officially supported and, therefore, is not recommended for most users.
+  [Platformio,](https://platformio.org/install) and we strongly encourage using this IDE for Arduino / Teensy 
+  development. Alternatively, [Arduino IDE](https://www.arduino.cc/en/software) also satisfies this dependency, but 
+  is not officially supported or recommended for most users.
 
 ### Additional Dependencies
 These dependencies will be automatically resolved whenever the library is installed via Platformio. ***They are 
@@ -81,7 +81,7 @@ below assume you are ***not*** a developer.
 ### Platformio
 
 1. Navigate to your platformio.ini file and add the following line to your target environment specification:
-   ```lib_deps = inkaros/ataraxis-transport-layer-pc@^1.0.0```. If you already have lib_deps specification, add the 
+   ```lib_deps = inkaros/ataraxis-transport-layer-mc@^1.0.0```. If you already have lib_deps specification, add the 
    library specification to the existing list of used libraries.
 2. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access classes from this library.
 ___
@@ -89,19 +89,21 @@ ___
 ## Usage
 
 ### TransportLayer
-The TransportLayer class provides an intermediate-level API for bidirectional communication over USB or UART interfaces. 
-It ensures proper encoding and decoding of data packets using the COBS (Consistent Overhead Byte Stuffing) protocol for 
-framing and CRC (Cyclic Redundancy Check) for integrity verification. Internal buffers are used to stage outgoing and 
-incoming payloads.
+The TransportLayer class provides an intermediate-level API for bidirectional communication over USB or UART serial 
+interfaces. It ensures proper encoding and decoding of data packets using the Consistent Overhead Byte Stuffing (COBS) 
+protocol and ensures transmitted packet integrity via Cyclic Redundancy Check (CRC).
 
 #### Packet Anatomy:
-This class sends and receives data in the form of packets. Each packet is expected to adhere to the following general 
-layout: \
-\
+This class sends and receives data in the form of packets. Each packet adheres to the following general 
+layout:
+
 `[START] [PAYLOAD SIZE] [COBS OVERHEAD] [PAYLOAD (1 to 254 bytes)] [DELIMITER] [CRC CHECKSUM (1 to 4 bytes)]`
 
-When using WriteData() and ReadData() methods, the users are only working with the payload section of the overall
-packet. The rest of the packet anatomy is controlled internally by this class and is not exposed to the users.
+To optimize runtime efficiency, the class generates two buffers at compile time that store the incoming and outgoing 
+data packets. TransportLayer’s WriteData() and ReadData() methods work with data ***exclusively*** from the region of 
+the buffer allocated to store the PAYLOAD bytes. The rest of the packet data is intentionally not accessible via the 
+public API. Therefore, users can safely ignore all packet-related information and focus on working with transmitted and
+received serialized payloads.
 
 #### Quickstart
 This is a minimal example of how to use this library. See the [main.cpp](./src/main.cpp) for .cpp implementation:
@@ -110,7 +112,7 @@ This is a minimal example of how to use this library. See the [main.cpp](./src/m
 // Note, this example should run on both Arduino and Teensy boards.
 
 // First, include the main STP class to access its' API.
-include <transport_layer.h>
+#include <transport_layer.h>
 
 // Maximum outgoing payload size, in bytes. Cannot exceed 254 bytes due to COBS encoding.
 uint8_t maximum_tx_payload_size = 254;

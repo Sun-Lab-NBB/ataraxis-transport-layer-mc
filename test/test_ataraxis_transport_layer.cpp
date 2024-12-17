@@ -644,20 +644,19 @@ void TestStreamMock()
 void TestSerializedTransferProtocolBufferManipulation()
 {
     // Instantiates the mock serial class and the tested SerializedTransferProtocol class
-    StreamMock<> mock_port;
+    StreamMock<56> mock_port;
 
-    // Note, uses different maximum payload size for the Rx and Tx buffers
-    TransportLayer<uint16_t, 254, 80> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 56, 56> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
 
     // Statically extracts the buffer sizes using accessor methods.
-    static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, '\xfe', 'P'>::get_tx_buffer_size();
-    static constexpr uint16_t rx_buffer_size = TransportLayer<uint16_t, '\xfe', 'P'>::get_rx_buffer_size();
+    static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, 56, 56>::get_tx_buffer_size();
+    static constexpr uint16_t rx_buffer_size = TransportLayer<uint16_t, 56, 56>::get_rx_buffer_size();
 
     // Verifies the performance of payload and buffer size accessor (get) methods.
-    TEST_ASSERT_EQUAL_UINT8(254, protocol.get_maximum_tx_payload_size());
-    TEST_ASSERT_EQUAL_UINT16(260, tx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
-    TEST_ASSERT_EQUAL_UINT8(80, protocol.get_maximum_rx_payload_size());
-    TEST_ASSERT_EQUAL_UINT16(86, rx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
+    TEST_ASSERT_EQUAL_UINT8(56, protocol.get_maximum_tx_payload_size());
+    TEST_ASSERT_EQUAL_UINT16(62, tx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
+    TEST_ASSERT_EQUAL_UINT8(56, protocol.get_maximum_rx_payload_size());
+    TEST_ASSERT_EQUAL_UINT16(62, rx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
 
     // Initializes two test and expected buffers to 0. Uses two buffers due to using different sizes for reception and
     // transmission buffers. Test buffers are used to expose the contents of the STP class iternal buffers, and expected
@@ -696,18 +695,17 @@ void TestSerializedTransferProtocolBufferManipulation()
     TEST_ASSERT_EQUAL_UINT8(0, protocol.get_rx_payload_size());
 
     // Instantiates test objects to be written to and read from the buffers
-    struct TestStruct
+    constexpr struct TestStruct
     {
             uint8_t byte_value       = 122;
             uint16_t short_value     = 45631;
             uint32_t long_value      = 321123;
             int8_t signed_8b_value   = -55;
             int16_t signed_16b_value = -8213;
-            int32_t signed_32b_value = -62312;
     } __attribute__((packed)) test_structure;
 
-    const uint16_t test_array[15] = {1, 2, 3, 4, 5, 6, 7, 8, 101, 256, 1234, 7834, 15643, 38123, 65321};
-    constexpr int32_t test_value  = -765;
+    const uint8_t test_array[10] = {1, 2, 3, 4, 5, 6, 7, 8, 101, 255};
+    constexpr int32_t test_value  = -62312;
 
     // Writes test objects into the _transmission_buffer
     uint16_t next_index = 0;
@@ -740,7 +738,7 @@ void TestSerializedTransferProtocolBufferManipulation()
     // written to it. Note, all values here have been manually converted to bytes, so this partially relies on the
     // tested platform endianness.
     expected_tx_buffer[0]  = 129;
-    expected_tx_buffer[1]  = 48;
+    expected_tx_buffer[1]  = 24;
     expected_tx_buffer[2]  = 0;
     expected_tx_buffer[3]  = 122;
     expected_tx_buffer[4]  = 63;
@@ -752,44 +750,29 @@ void TestSerializedTransferProtocolBufferManipulation()
     expected_tx_buffer[10] = 201;
     expected_tx_buffer[11] = 235;
     expected_tx_buffer[12] = 223;
-    expected_tx_buffer[13] = 152;
-    expected_tx_buffer[14] = 12;
-    expected_tx_buffer[15] = 255;
-    expected_tx_buffer[16] = 255;
-    expected_tx_buffer[17] = 1;
-    expected_tx_buffer[18] = 0;
-    expected_tx_buffer[19] = 2;
-    expected_tx_buffer[20] = 0;
-    expected_tx_buffer[21] = 3;
-    expected_tx_buffer[22] = 0;
-    expected_tx_buffer[23] = 4;
-    expected_tx_buffer[24] = 0;
-    expected_tx_buffer[25] = 5;
-    expected_tx_buffer[26] = 0;
-    expected_tx_buffer[27] = 6;
-    expected_tx_buffer[28] = 0;
-    expected_tx_buffer[29] = 7;
-    expected_tx_buffer[30] = 0;
-    expected_tx_buffer[31] = 8;
-    expected_tx_buffer[32] = 0;
-    expected_tx_buffer[33] = 101;
-    expected_tx_buffer[34] = 0;
-    expected_tx_buffer[35] = 0;
-    expected_tx_buffer[36] = 1;
-    expected_tx_buffer[37] = 210;
-    expected_tx_buffer[38] = 4;
-    expected_tx_buffer[39] = 154;
-    expected_tx_buffer[40] = 30;
-    expected_tx_buffer[41] = 27;
-    expected_tx_buffer[42] = 61;
-    expected_tx_buffer[43] = 235;
-    expected_tx_buffer[44] = 148;
-    expected_tx_buffer[45] = 41;
-    expected_tx_buffer[46] = 255;
-    expected_tx_buffer[47] = 3;
-    expected_tx_buffer[48] = 253;
-    expected_tx_buffer[49] = 255;
-    expected_tx_buffer[50] = 255;
+    expected_tx_buffer[13] = 1;
+    expected_tx_buffer[14] = 2;
+    expected_tx_buffer[15] = 3;
+    expected_tx_buffer[16] = 4;
+    expected_tx_buffer[17] = 5;
+    expected_tx_buffer[18] = 6;
+    expected_tx_buffer[19] = 7;
+    expected_tx_buffer[20] = 8;
+    expected_tx_buffer[21] = 101;
+    expected_tx_buffer[22] = 255;
+    expected_tx_buffer[23] = 152;
+    expected_tx_buffer[24] = 12;
+    expected_tx_buffer[25] = 255;
+    expected_tx_buffer[26] = 255;
+    expected_tx_buffer[27] = 61;
+    expected_tx_buffer[28] = 235;
+    expected_tx_buffer[29] = 148;
+    expected_tx_buffer[30] = 41;
+    expected_tx_buffer[31] = 255;
+    expected_tx_buffer[32] = 3;
+    expected_tx_buffer[33] = 253;
+    expected_tx_buffer[34] = 255;
+    expected_tx_buffer[35] = 255;
     protocol.CopyTxDataToBuffer(test_tx_buffer);  // Copies the _transmission_buffer contents to the test_buffer
 
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_tx_buffer, test_tx_buffer, tx_buffer_size);
@@ -802,10 +785,9 @@ void TestSerializedTransferProtocolBufferManipulation()
             uint32_t long_value      = 0;
             int8_t signed_8b_value   = 0;
             int16_t signed_16b_value = 0;
-            int32_t signed_32b_value = 0;
     } __attribute__((packed)) test_structure_new;
 
-    uint16_t test_array_new[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    uint8_t test_array_new[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     int32_t test_value_new      = 0;
 
     // Copies the contents of the _transmission_buffer to the _reception_buffer to test reception buffer manipulation
@@ -842,7 +824,6 @@ void TestSerializedTransferProtocolBufferManipulation()
     TEST_ASSERT_EQUAL_UINT32(test_structure.long_value, test_structure_new.long_value);
     TEST_ASSERT_EQUAL_INT8(test_structure.signed_8b_value, test_structure_new.signed_8b_value);
     TEST_ASSERT_EQUAL_INT16(test_structure.signed_16b_value, test_structure_new.signed_16b_value);
-    TEST_ASSERT_EQUAL_INT32(test_structure.signed_32b_value, test_structure_new.signed_32b_value);
 
     // Array
     TEST_ASSERT_EQUAL_UINT16_ARRAY(test_array, test_array_new, 15);
@@ -866,7 +847,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
     // Initializes the tested class
     StreamMock<> mock_port;
     // Uses identical rx and tx payload sizes
-    TransportLayer<uint16_t, 60, 60> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 55, 55> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
 
     // Initializes a test variable
     uint8_t test_value = 223;
@@ -1034,8 +1015,8 @@ void TestSerializedTransferProtocolDataTransmission()
 void TestSerializedTransferProtocolDataTransmissionErrors()
 {
     // Initializes the tested class
-    StreamMock<60> mock_port;  // Initializes to the minimal required size
-    TransportLayer<uint16_t, 60, 60, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    StreamMock<50> mock_port;  // Initializes to the minimal required size
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
 
     // Instantiates crc encoder class separately to generate test data
     auto crc_class = CRCProcessor<uint16_t>(0x07, 0x00, 0x00);
@@ -1161,7 +1142,7 @@ void TestSerializedTransferProtocolDataTransmissionErrors()
 
     // Sets the entire rx_buffer to valid non-delimiter byte-values for the test below to work, as it has to consume
     // most of the rx_buffer to run out of the _reception_buffer space of the SerializedTransferProtocol class.
-    for (uint16_t i = 15; i < StreamMock<60>::buffer_size; i++)
+    for (uint16_t i = 15; i < StreamMock<50>::buffer_size; i++)
     {
         mock_port.rx_buffer[i] = 11;
     }
@@ -1182,8 +1163,8 @@ void TestSerializedTransferProtocolDataTransmissionErrors()
 void TestSerializedTransferProtocolDelimiterNotFoundError()
 {
     // Initializes the tested class
-    StreamMock<60> mock_port;
-    TransportLayer<uint16_t, 60, 60, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    StreamMock<50> mock_port;
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
     CRCProcessor<uint16_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload
@@ -1217,8 +1198,8 @@ void TestSerializedTransferProtocolDelimiterNotFoundError()
 void TestSerializedTransferProtocolDelimiterFoundTooEarlyError()
 {
     // Initializes the tested class
-    StreamMock<60> mock_port;
-    TransportLayer<uint16_t, 60, 60, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    StreamMock<50> mock_port;
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
     CRCProcessor<uint16_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload
@@ -1252,8 +1233,8 @@ void TestSerializedTransferProtocolDelimiterFoundTooEarlyError()
 void TestSerializedTransferProtocolPostambleTimeoutError()
 {
     // Initializes the tested class
-    StreamMock<60> mock_port;
-    TransportLayer<uint16_t, 60, 60, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    StreamMock<50> mock_port;
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
     CRCProcessor<uint16_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload

@@ -61,8 +61,8 @@
  * - shared_assets.h for shared library assets (status byte-codes for the class and is_same_v for static guards).
  */
 
-#ifndef AXMC_TRANSPORT_LAYER_H
-#define AXMC_TRANSPORT_LAYER_H
+#ifndef AXTLMC_TRANSPORT_LAYER_H
+#define AXTLMC_TRANSPORT_LAYER_H
 
 // Dependencies
 #include <Arduino.h>
@@ -1397,4 +1397,4 @@ class TransportLayer
         }
 };
 
-#endif  //AXMC_TRANSPORT_LAYER_H
+#endif  //AXTLMC_TRANSPORT_LAYER_H

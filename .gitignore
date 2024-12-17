@@ -199,3 +199,6 @@ cython_debug/
 # Docs directory
 /docs/source/doxygen/
 /docs/source/doxygen
+
+# Library tarballs
+ataraxis-transport-layer-mc-*.tar.gz

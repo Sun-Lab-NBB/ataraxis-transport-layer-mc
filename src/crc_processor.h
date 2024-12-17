@@ -53,8 +53,8 @@
  * - shared_assets.h for shared library assets (mostly status byte-codes for library classes).
  */
 
-#ifndef AXMC_CRC_PROCESSOR_H
-#define AXMC_CRC_PROCESSOR_H
+#ifndef AXTLMC_CRC_PROCESSOR_H
+#define AXTLMC_CRC_PROCESSOR_H
 
 // Dependencies
 #include <Arduino.h>
@@ -473,4 +473,4 @@ class CRCProcessor
         }
 };
 
-#endif  //AXMC_CRC_PROCESSOR_H
+#endif  //AXTLMC_CRC_PROCESSOR_H

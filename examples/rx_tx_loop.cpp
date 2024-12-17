@@ -1,7 +1,7 @@
-// This file exactly matches the rx_tx_loop.cpp example and is excluded from the compiled library. It is kept here
-// to facilitate library development.
-// See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for details about the library.
-// Authors: Ivan Kondratyev (Inkaros), Jasmine Si.
+// This example is intended to be used together with the rx_tx_loop example of the Python companion library
+// ataraxis-transport-layer-pc. When used correctly, the example code will continuously transmit and receive data
+// between the microcontroller and the PC. See the GitHub repo for more details
+// https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc.
 
 // Includes the core dependency for all Teensyduino projects.
 #include <Arduino.h>

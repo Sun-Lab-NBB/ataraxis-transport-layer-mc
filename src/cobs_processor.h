@@ -43,8 +43,8 @@
  * - shared_assets.h For COBS-related status codes.
  */
 
-#ifndef AXMC_COBS_PROCESSOR_H
-#define AXMC_COBS_PROCESSOR_H
+#ifndef AXTLMC_COBS_PROCESSOR_H
+#define AXTLMC_COBS_PROCESSOR_H
 
 //Dependencies
 #include <Arduino.h>
@@ -457,4 +457,4 @@ class COBSProcessor
         static constexpr uint8_t kPayloadStartIndex = kOverheadByteIndex + 1;  // NOLINT(*-dynamic-static-initializers)
 };
 
-#endif  //AXMC_COBS_PROCESSOR_H
+#endif  //AXTLMC_COBS_PROCESSOR_H

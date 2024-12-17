@@ -44,8 +44,8 @@
  * - Stream.h for the base Stream class that is overloaded to form this Mock class.
  */
 
-#ifndef AXMC_STREAM_MOCK_H
-#define AXMC_STREAM_MOCK_H
+#ifndef AXTLMC_STREAM_MOCK_H
+#define AXTLMC_STREAM_MOCK_H
 
 // Dependencies:
 #include <Arduino.h>
@@ -314,4 +314,4 @@ class StreamMock final : public Stream
         }
 };
 
-#endif  //AXMC_STREAM_MOCK_H
+#endif  //AXTLMC_STREAM_MOCK_H

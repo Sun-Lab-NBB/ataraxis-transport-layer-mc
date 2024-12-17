@@ -646,17 +646,18 @@ void TestSerializedTransferProtocolBufferManipulation()
     // Instantiates the mock serial class and the tested SerializedTransferProtocol class
     StreamMock<56> mock_port;
 
-    TransportLayer<uint16_t, 56, 56> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
+    // Uses different rx and tx buffer sizes
+    TransportLayer<uint16_t, 56, 45> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
 
     // Statically extracts the buffer sizes using accessor methods.
-    static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, 56, 56>::get_tx_buffer_size();
-    static constexpr uint16_t rx_buffer_size = TransportLayer<uint16_t, 56, 56>::get_rx_buffer_size();
+    static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, 56, 45>::get_tx_buffer_size();
+    static constexpr uint16_t rx_buffer_size = TransportLayer<uint16_t, 56, 45>::get_rx_buffer_size();
 
     // Verifies the performance of payload and buffer size accessor (get) methods.
     TEST_ASSERT_EQUAL_UINT8(56, protocol.get_maximum_tx_payload_size());
     TEST_ASSERT_EQUAL_UINT16(62, tx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
-    TEST_ASSERT_EQUAL_UINT8(56, protocol.get_maximum_rx_payload_size());
-    TEST_ASSERT_EQUAL_UINT16(62, rx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
+    TEST_ASSERT_EQUAL_UINT8(45, protocol.get_maximum_rx_payload_size());
+    TEST_ASSERT_EQUAL_UINT16(51, rx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
 
     // Initializes two test and expected buffers to 0. Uses two buffers due to using different sizes for reception and
     // transmission buffers. Test buffers are used to expose the contents of the STP class iternal buffers, and expected
@@ -764,15 +765,6 @@ void TestSerializedTransferProtocolBufferManipulation()
     expected_tx_buffer[24] = 12;
     expected_tx_buffer[25] = 255;
     expected_tx_buffer[26] = 255;
-    expected_tx_buffer[27] = 61;
-    expected_tx_buffer[28] = 235;
-    expected_tx_buffer[29] = 148;
-    expected_tx_buffer[30] = 41;
-    expected_tx_buffer[31] = 255;
-    expected_tx_buffer[32] = 3;
-    expected_tx_buffer[33] = 253;
-    expected_tx_buffer[34] = 255;
-    expected_tx_buffer[35] = 255;
     protocol.CopyTxDataToBuffer(test_tx_buffer);  // Copies the _transmission_buffer contents to the test_buffer
 
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_tx_buffer, test_tx_buffer, tx_buffer_size);
@@ -826,7 +818,7 @@ void TestSerializedTransferProtocolBufferManipulation()
     TEST_ASSERT_EQUAL_INT16(test_structure.signed_16b_value, test_structure_new.signed_16b_value);
 
     // Array
-    TEST_ASSERT_EQUAL_UINT16_ARRAY(test_array, test_array_new, 15);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(test_array, test_array_new, 10);
 
     // Value
     TEST_ASSERT_EQUAL_INT32(test_value, test_value_new);
@@ -845,8 +837,8 @@ void TestSerializedTransferProtocolBufferManipulation()
 void TestSerializedTransferProtocolBufferManipulationErrors()
 {
     // Initializes the tested class
-    StreamMock<> mock_port;
-    // Uses identical rx and tx payload sizes
+    StreamMock<55> mock_port;
+    // Uses same rx and tx payload sizes
     TransportLayer<uint16_t, 55, 55> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
 
     // Initializes a test variable
@@ -854,7 +846,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
 
     // Verifies that writing the variable to the last valid index of the payload works as expected and returns a valid
     // payload size and status code
-    protocol.WriteData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_tx_payload_size() - 1);
+    protocol.WriteData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_tx_payload_size() - 1);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kObjectWrittenToBuffer,
         protocol.transfer_status
@@ -862,7 +854,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
 
     // Verifies that attempting to write the variable to an index beyond the payload range results in an error
     uint16_t error_index =
-        protocol.WriteData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_tx_payload_size());
+        protocol.WriteData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_tx_payload_size());
     TEST_ASSERT_EQUAL_UINT16(0, error_index);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kWriteObjectBufferError,
@@ -875,7 +867,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
     TEST_ASSERT_TRUE(copied);
 
     // Verifies that reading from the end of the payload functions as expected
-    protocol.ReadData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_rx_payload_size() - 1);
+    protocol.ReadData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_rx_payload_size() - 1);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kObjectReadFromBuffer,
         protocol.transfer_status
@@ -883,7 +875,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
 
     // Verifies that attempting to read from an index beyond the payload range results in an error
     error_index =
-        protocol.ReadData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_rx_payload_size());
+        protocol.ReadData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_rx_payload_size());
     TEST_ASSERT_EQUAL_UINT16(0, error_index);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kReadObjectBufferError,

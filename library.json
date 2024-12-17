@@ -1,0 +1,64 @@
+{
+  "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
+  "name": "ataraxis-transport-layer-mc",
+  "version": "1.0.0",
+  "description": "A C++ library for Arduino and Teensy microcontrollers that provides methods for establishing and maintaining bidirectional communication with PC clients over USB or UART serial interfaces.",
+  "keywords": "arduino, teensy, ataraxis, communication, serial",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc"
+  },
+  "authors":
+  [
+    {
+      "name": "Ivan Kondratyev",
+      "url": "https://github.com/Inkaros",
+      "maintainer": true
+    },
+    {
+      "name": "Jasmine Si",
+      "email": "js3296@cornell.edu"
+    }
+  ],
+  "license": "LGPL-3.0-or-later",
+  "frameworks": ["arduino"],
+  "platforms": ["atmelavr", "atmelsam", "teensy"],
+  "headers": "transport_layer.h",
+  "examples": [
+    {
+      "name": "Rx Tx Loop",
+      "base": "examples/rx_tx_loop",
+      "files": [
+        "rx_tx_loop.cpp",
+        "src/transport_layer.h",
+        "src/cobs_processor.h",
+        "src/crc_processor.h",
+        "src/axtlmc_shared_assets.h"
+      ]
+    }
+  ],
+  "dependencies":
+  [
+    {
+      "owner": "pfeerick",
+      "name": "elapsedMillis",
+      "version": "^1.0.6",
+      "platforms": ["atmelsam", "atmelavr"]
+    }
+  ],
+  "export": {
+    "include":
+    [
+      "./examples/*",
+      "./src/*"
+    ],
+    "exclude":
+    [
+      "./src/main.cpp",
+      "./src/stream_mock.h"
+    ]
+  },
+  "build": {
+    "flags": "-std=c++17"
+  }
+}

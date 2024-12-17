@@ -106,87 +106,70 @@ public API. Therefore, users can safely ignore all packet-related information an
 received serialized payloads.
 
 #### Quickstart
-This is a minimal example of how to use this library. See the [main.cpp](./src/main.cpp) for .cpp implementation:
+This is a minimal example of how to use this library. See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for 
+.cpp implementation:
 
 ```
-// Note, this example should run on both Arduino and Teensy boards.
+// Includes the core dependency for all Teensyduino projects.
+#include <Arduino.h>
 
-// First, include the main STP class to access its' API.
+// Includes the TransportLayer header to access class API.
 #include <transport_layer.h>
 
-// Maximum outgoing payload size, in bytes. Cannot exceed 254 bytes due to COBS encoding.
-uint8_t maximum_tx_payload_size = 254;
-
-// Maximum incoming payload size, in bytes. Cannot exceed 254 bytes.
-uint8_t maximum_rx_payload_size = 200;
-
-// The minimal incoming payload size.
-uint8_t minimum_payload_size = 1;
-
-// These parameters jointly specify the CRC algorithm to be used fro the CRC calcualtion. The class automatically scales
-// to work for 8-, 16- and 32-bit algorithms.
-uint16_t polynomial = 0x1021;
-uint16_t initial_value = 0xFFFF;
-uint16_t final_xor_value = 0x0000;
-
-// The value used to mark the beginning of transmitted packets in the byte-stream. 
-uint8_t start_byte = 129;
-
-// The value used to mark the end of the main packet section.
-uint8_t delimiter_byte = 0;
-
-// The number of microseconds that can separate the reception of any two consecutive bytes of the same packet.
-uint32_t timeout = 20000; // In microseconds
-
-// The reference to the Serial interface class. 
-serial = Serial;
-
-// Instantiates a new TransportLayer object.
-TransportLayer<uint16_t, maximum_tx_payload_size, maximum_rx_payload_size, minimum_payload_size> tl_class(
-    serial,
-    polynomial,
-    initial_value,
-    final_xor_value,
-    start_byte,
-    delimiter_byte,
-    timeout
-);
+// Instantiates a new TransportLayer object. Most template and constructor arguments should automatically scale with
+// your microcontroller. Check the API documentation website if you want to fine-tune class parameters to better match
+// your use case.
+TransportLayer<> tl_class(Serial);  // NOLINT(*-interfaces-global-init)
 
 void setup()
 {
     Serial.begin(115200);  // Opens the Serial port, initiating PC communication
 }
 
+// Pre-creates the objects used for the demonstration below.
+uint32_t test_scalar  = 0;
+uint8_t test_array[4] = {0, 0, 0, 0};
+
+struct TestStruct
+{
+        bool test_flag   = true;
+        float test_float = 6.66;
+} __attribute__((packed)) test_struct;  // Critically, the structure HAS to be packed!
 
 void loop()
 {
     // Checks if data is available for reception.
     if (tl_class.Available())
     {
-        // If the data is available, carries out the reception procedure (acually receives the byte-stream, parses the 
-        // payload and makes it available for reading).
-        bool data_received = tl_class.ReceiveData();
-        
-        // Provided that the reception was successful, reads the data, assumed to be the test array object
+        // If the data is available, carries out the reception procedure (reads the received byte-stream, parses the
+        // payload, and makes it available for reading).
+        const bool data_received = tl_class.ReceiveData();
+
+        // If the reception was successful, reads the data, assumed to be the test array object. Note, this example
+        // is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
         if (data_received)
         {
-            // Instantiates a simple test object
-            uint8_t test_data[4] = {0, 0, 0, 0};
-            
-            // Reads the received data into the array object. 
-            uint16_t next_index = tl_class.ReadData(test_data);
-            
-            // Instantiates a new object to send back to PC.
-            uint8_t send_data[4] = {5, 6, 7, 8};
-            
-            // Writes the object to the transmission buffer, staging it to be sent witht he next SendData() command. 
-            uint16_t add_index = tl_class.WriteData(send_data, 0);
-            
-            // This showcases a chained addition, where test_data is staged right after send_data.
-            add_index = tl_class.WriteData(test_data, add_index);
-            
-            // Packages and sends the contents of the class transmission buffer that were written above to the PC.
-            bool data_sent= tl_class.SendData();  // This also returns a boolean status.
+            // Overwrites the memory of placeholder objects with the received data.
+            uint16_t next_index = 0;  // Starts reading from the beginning of the payload region.
+            next_index          = tl_class.ReadData(test_scalar, next_index);
+            next_index          = tl_class.ReadData(test_array, next_index);
+            // Since test_struct is the last object in the payload, we do not need to save the new next_index.
+            tl_class.ReadData(test_struct, next_index);
+
+            // Now the placeholder objects are updated with the values transmitted from the PC. The section below
+            // showcases sending the data to the PC. It re-transmits the same data in the same order except
+            // for the test_scalar which is changed to a new value.
+            test_scalar = 987654321;
+
+            // Writes objects to the TransportLayer's transmission buffer, staging them to be sent with the next
+            // SendData() command. Note, the objects are written in the order they will be read by the PC.
+            next_index = 0;  // Resets the index to 0.
+            next_index = tl_class.WriteData(test_scalar, next_index);
+            next_index = tl_class.WriteData(test_array, next_index);
+            tl_class.WriteData(test_struct, next_index);  // Once again, the index after last object is not saved.
+
+            // Packages and sends the contents of the transmission buffer that were written above to the PC.
+            tl_class.SendData();  // This also returns a boolean status that we discard for this example.
         }
     }
 }
@@ -194,49 +177,61 @@ void loop()
 #### Key Methods
 
 ##### Sending Data
-When sending data, there are two key methods: `WriteData()` and `SendData()`. 
-- The `WriteData()` method writes the input object as bytes into the `_transmission_buffer` payload region starting
-  at the specified `start_index`.
-- The `SendData()` method encodes the payload using COBS, calculates a CRC checksum, and transmits the contents of
-  the transmission buffer as a serialized packet. To ensure correct data is sent, you must first populate the
-  `_transmission_buffer` using `WriteData()`. Otherwise, `SendData()` will transmit whatever data is currently stored
-  in the buffer.
+There are two key methods associated with sending data to the PC:
+- The `WriteData()` method serializes the input object into bytes and writes the resultant byte sequence into 
+  the `_transmission_buffer` payload region starting at the specified `start_index`.
+- The `SendData()` method encodes the payload into a packet using COBS, calculates the CRC checksum for the encoded 
+  packet, and transmits the packet and the CRC checksum to PC. The method requires that at least one byte of data is 
+  written to the staging buffer via the WriteData() method before it can be sent to the PC.
 
+The example below showcases the sequence of steps necessary to send the data to the PC and assumes TransportLayer 
+'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example:
 ```
-// Generates the test array to be packaged and 'sent'
+// Generates the test array to simulate the payload.
 uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
 
-// Writes the package into the _transmission_buffer
-protocol.WriteData(test_array, 0);
+// Writes the data into the _transmission_buffer.
+tl_class.WriteData(test_array, 0);
 
-// Sends the payload to the Stream buffer. If all steps of this process succeed, the method returns 'true'.
-bool sent_status = protocol.SendData();
+// Sends the payload to the Stream buffer. If all steps of this process succeed, the method returns 'true' and the data
+// is handed off to the 
+bool sent_status = tl_class.SendData();
 ```
 
 #### Receiving Data
-When receiving data, there are three key methods:
-- `Available()` checks if the reception buffer has enough bytes to justify reading. Returns True if there are bytes
-  to be read from the transmission interface reception buffer, and False otherwise.
-- `ReceiveData()` reads the incoming packet verifies it with CRC, and decodes it using COBS. If the packet was 
-successfully received and unpacked, this method returns True, and returns False otherwise.
-- `ReadData()` extracts the payload from the _reception_buffer. Reads the `requested_bytes` number of bytes from the 
-`_reception_buffer` payload region starting at the `start_index` into the provided object.
+There are three key methods associated with receiving data from the PC:
+- The `Available()` method checks if the serial interface has received enough bytes to justify parsing the data. If this
+  method returns False, calling ReceiveData() will likely fail.
+- The `ReceiveData()` method reads the encoded packet from the byte-stream stored in Serial interface buffer, verifies 
+  its integrity with CRC, and decodes the payload from the packet using COBS. If the packet was successfully received 
+  and unpacked, this method returns True.
+- The `ReadData()` method overwrites the memory (data) of the input object with the data extracted from the received 
+  payload. To do so, the method reads the number of bytes necessary to 'fill' the object with data from the payload, 
+  starting at the `start_index`. Following this procedure, the object will have new value(s) that match the read 
+  data.
 
+The example below showcases the sequence of steps necessary to receive data from the PC and assumes TransportLayer
+'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example: 
 ```
-if (tl_class.Available()) {
-  tl_class.ReceiveData();
+// Packages and sends the contents of the transmission buffer that were written above to the PC.
+tl_class.SendData();  //
+
+if (tl_class.Available())
+{
+    tl_class.ReceiveData();
 }
-uint16_t value = 44321;
+uint16_t value    = 44321;
 uint8_t array[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
 struct MyStruct
 {
-  uint8_t a = 60;
-  uint16_t b = 12345;
-  uint32_t c = 1234567890;
+        uint8_t a  = 60;
+        uint16_t b = 12345;
+        uint32_t c = 1234567890;
 } test_structure;
 
 // Overwrites the test objects with the data stored inside the buffer
-uint16_t next_index = tl_class.ReadData(value);
+uint16_t next_index = tl_class.ReadData(value);  // ReadData defaults to start_index 0 if it is not provided
 uint16_t next_index = tl_class.ReadData(array, next_index);
 uint16_t next_index = tl_class.ReadData(test_structure, next_index);
 ```
@@ -250,56 +245,47 @@ ___
 
 ## Developers
 
-This section provides additional installation, dependency, and build-system instructions for the developers that want to
+This section provides installation, dependency, and build-system instructions for the developers that want to
 modify the source code of this library.
 
 ### Installing the library
 
 1. If you do not already have it installed, install [Platformio](https://platformio.org/install/integration) either as
    a standalone IDE or as a plugin for your main C++ IDE. As part of this process, you may need to install a standalone
-   version of [Python](https://www.python.org/downloads/). Note, for the rest of this guide, installing platformio CLI
-   is enough.
+   version of [Python](https://www.python.org/downloads/).
 2. Download this repository to your local machine using your preferred method, such as git-cloning.
-3. ```cd``` to the root directory of the project using your CLI of choice.
-4. Run ```pio --target upload -e ENVNAME``` command to compile and upload the library to your microcontroller. Replace
-   the ```ENVNAME``` with the environment name for your board. Currently, the project is preconfigured to work for
-   ```mega```, ```teensy41``` and ```due``` environments.
-5. Optionally, run ```pio test -e ENVNAME``` command using the appropriate environment to test the library on your
-   target platform
+3. ```cd``` to the root directory of the project using your command line interface of choice. Make sure the root 
+   contains the `platformio.ini` file.
+4. Run ```pio project init ``` to initialize the project on your local machine. Provide additional flags to this command
+   as needed to properly configure the project for your specific needs. See 
+   [Platformio API documentation](https://docs.platformio.org/en/latest/core/userguide/project/cmd_init.html) for 
+   supported flags.
+5. Optionally, use ```pio project metadata``` to dump the metadata that integrate the newly initialized project with
+   your C++ IDE. Note, not all IDEs are supported, and not all IDEs need this step.
 
-Note, if you are developing for a board that the project is not explicitly configured for, you will first need to edit
-the platformio.ini file to support your target microcontroller by configuring a new environment.
+***Warning!*** If you are developing for a platform or architecture that the project is not explicitly configured for, 
+you will first need to edit the platformio.ini file to support your target microcontroller by configuring a new 
+environment. This project comes preconfigured with `teensy 4.1`, `arduino due` and `arduino mega (R3)` support.
 
 ### Additional Dependencies
 
-In addition to installing platformio and main project dependencies, additionally install the following dependencies:
+In addition to installing platformio and main project dependencies, install the following dependencies:
 
 - [Tox](https://tox.wiki/en/4.15.0/user_guide.html), if you intend to use preconfigured tox-based project automation.
-- [Doxygen](https://www.doxygen.nl/manual/install.html), if you want to generate C++ code documentation. ***Note***, if 
-  you chose not to install Tox, you will also need [Breathe](https://breathe.readthedocs.io/en/latest/) and
-  [Sphinx](https://docs.readthedocs.io/en/stable/intro/getting-started-with-sphinx.html).
+  Currently, this is used only to build API documentation from source code docstrings.
+- [Doxygen](https://www.doxygen.nl/manual/install.html), if you want to generate C++ code documentation.
 
 ### Development Automation
 
-To help developers, this project comes with a set of fully configured 'tox'-based pipelines for verifying and building
-the project. Each of the tox commands builds the necessary project dependencies in the isolated environment before
-carrying out its tasks.
+Unlike other Ataraxis libraries, the automation for this library is primarily provided via 
+[Platformio’s command line interface (cli)](https://docs.platformio.org/en/latest/core/userguide/index.html) core. 
+Additionally, we also use [tox](https://tox.wiki/en/latest/user_guide.html) for certain automation tasks not directly 
+covered by platformio, such as API documentation generation. Check [tox.ini file](tox.ini) for details about
+available pipelines and their implementation. Alternatively, call ```tox list``` from the root directory of the project
+to see the list of available tasks.
 
-Below is a list of all available commands and their purpose:
-
-- ```tox -e test-ENVNAME``` Builds the project and executes the tests stored in the /test directory using 'Unity' test
-  framework. Note, replace the ```ENVNAME``` with the name of the tested environment. By default, the tox is configured
-  to
-  run tests for 'teensy41,' 'mega' and 'due' platforms. To add different environments, edit the tox.ini file.
-- ```tox -e docs``` Uses Doxygen, Breathe, and Sphinx to build the source code documentation from Doxygen-formatted
-  docstrings, rendering a static API .html file.
-- ```tox -e build-ENVNAME``` Builds the project for the specified environment (platform). Does not upload the built hex
-  file to the board. Same ```ENVNAME``` directions apply as to the 'test' command.
-- ```tox -e upload-ENVNAME``` Builds the project for the specified environment (platform) and uploads it to the
-  connected board. Same ```ENVNAME``` directions apply as to the 'test' command.
-- ```tox --parallel``` Carries out all commands listed above in-parallel (where possible). Remove the '--parallel'
-  argument to run the commands sequentially. Note, this command will test, build and upload the library for all
-  development platforms, which currently includes: 'teensy41,' 'mega' and 'due.'
+**Note!** All pull requests for this project have to successfully complete the `tox`, `pio check` and `pio test` tasks 
+before being submitted.
 ---
 
 ## Versioning

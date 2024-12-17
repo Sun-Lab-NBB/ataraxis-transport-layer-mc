@@ -1,7 +1,7 @@
 # ataraxis-transport-layer-mc
 
 A C++ library for Arduino and Teensy microcontrollers that provides methods for establishing and maintaining 
-bidirectional communication with host-computers over USB or UART serial interfaces.
+bidirectional communication with PC clients over USB or UART serial interfaces.
 
 ![c++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=C%2B%2B&logoColor=white)
 ![arduino](https://img.shields.io/badge/Arduino-00878F?logo=arduino&logoColor=fff&style=plastic)
@@ -13,8 +13,11 @@ ___
 This is a C++ implementation of the ataraxis-transport-layer (AXTL) library designed to run on Arduino or Teensy 
 microcontrollers. It provides methods for bidirectionally communicating with a host-computer running the 
 [ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer) companion library written in 
-Python. This library is designed to support time-critical applications, and can achieve microsecond communication speeds
-for newer microcontroller-PC configurations.
+Python. The library abstracts most steps necessary for data transmission, such as serializing data into payloads, 
+packing the payloads into packets, and transmitting packets as byte-streams to the receiver. It also abstracts the 
+reverse sequence of steps necessary to verify and decode the payload from the packet received as a stream of bytes. The 
+library is specifically designed to support time-critical applications, such as scientific experiments, and can achieve 
+microsecond communication speeds for newer microcontroller-PC configurations.
 ___
 
 ## Features
@@ -101,7 +104,7 @@ When using WriteData() and ReadData() methods, the users are only working with t
 packet. The rest of the packet anatomy is controlled internally by this class and is not exposed to the users.
 
 #### Quickstart
-This is a minimal example of how to use this library. See the [examples](./examples) folder for .cpp implementations:
+This is a minimal example of how to use this library. See the [main.cpp](./src/main.cpp) for .cpp implementation:
 
 ```
 // Note, this example should run on both Arduino and Teensy boards.
@@ -253,8 +256,7 @@ modify the source code of this library.
 1. If you do not already have it installed, install [Platformio](https://platformio.org/install/integration) either as
    a standalone IDE or as a plugin for your main C++ IDE. As part of this process, you may need to install a standalone
    version of [Python](https://www.python.org/downloads/). Note, for the rest of this guide, installing platformio CLI
-   is
-   sufficient.
+   is enough.
 2. Download this repository to your local machine using your preferred method, such as git-cloning.
 3. ```cd``` to the root directory of the project using your CLI of choice.
 4. Run ```pio --target upload -e ENVNAME``` command to compile and upload the library to your microcontroller. Replace
@@ -277,8 +279,8 @@ In addition to installing platformio and main project dependencies, additionally
 
 ### Development Automation
 
-To assist developers, this project comes with a set of fully configured 'tox'-based pipelines for verifying and building
-the project. Each of the tox commands builds the necessary project dependencies in the isolated environment prior to
+To help developers, this project comes with a set of fully configured 'tox'-based pipelines for verifying and building
+the project. Each of the tox commands builds the necessary project dependencies in the isolated environment before
 carrying out its tasks.
 
 Below is a list of all available commands and their purpose:
@@ -287,7 +289,7 @@ Below is a list of all available commands and their purpose:
   framework. Note, replace the ```ENVNAME``` with the name of the tested environment. By default, the tox is configured
   to
   run tests for 'teensy41,' 'mega' and 'due' platforms. To add different environments, edit the tox.ini file.
-- ```tox -e docs``` Uses Doxygen, Breathe and Sphinx to build the source code documentation from Doxygen-formatted
+- ```tox -e docs``` Uses Doxygen, Breathe, and Sphinx to build the source code documentation from Doxygen-formatted
   docstrings, rendering a static API .html file.
 - ```tox -e build-ENVNAME``` Builds the project for the specified environment (platform). Does not upload the built hex
   file to the board. Same ```ENVNAME``` directions apply as to the 'test' command.
@@ -296,15 +298,26 @@ Below is a list of all available commands and their purpose:
 - ```tox --parallel``` Carries out all commands listed above in-parallel (where possible). Remove the '--parallel'
   argument to run the commands sequentially. Note, this command will test, build and upload the library for all
   development platforms, which currently includes: 'teensy41,' 'mega' and 'due.'
+---
+
+## Versioning
+
+We use [semantic versioning](https://semver.org/) for this project. For the versions available, see the
+[tags on this repository](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc/tags).
+
+---
 
 ## Authors
 
 - Ivan Kondratyev ([Inkaros](https://github.com/Inkaros))
 - Jasmine Si
+---
 
 ## License
 
 This project is licensed under the GPL3 License: see the [LICENSE](LICENSE) file for details.
+
+---
 
 ## Acknowledgments
 
@@ -314,3 +327,4 @@ This project is licensed under the GPL3 License: see the [LICENSE](LICENSE) file
 [SerialTransfer](https://github.com/PowerBroker2/SerialTransfer) for inspiring this library and serving as an example 
 and benchmark. Check SerialTransfer as a good alternative with non-overlapping functionality that may be better for your
 project.
+---

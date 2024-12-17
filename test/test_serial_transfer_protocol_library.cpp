@@ -188,7 +188,8 @@ void TestCOBSProcessorErrors()
     // the COBSProcessor class and, therefore, any deviation from the expected format is likely due to the payload or
     // packet being corrupted during transmission.
 
-    // Resets the shared buffer to default state before running the test to exclude any confounds from the tests above
+    // Resets the shared buffer to default state before running the test to exclude any confounding factors from the
+    // tests above
     memset(payload_buffer, 22, sizeof(payload_buffer));
     payload_buffer[2] = 0;  // Sets the overhead placeholder to 0 which is required for encoding to work
 
@@ -649,8 +650,8 @@ void TestSerializedTransferProtocolBufferManipulation()
     TransportLayer<uint16_t, 254, 80> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
 
     // Statically extracts the buffer sizes using accessor methods.
-    static constexpr uint16_t tx_buffer_size = TransportLayer<unsigned short, '\xfe', 'P'>::get_tx_buffer_size();
-    static constexpr uint16_t rx_buffer_size = TransportLayer<unsigned short, '\xfe', 'P'>::get_rx_buffer_size();
+    static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, '\xfe', 'P'>::get_tx_buffer_size();
+    static constexpr uint16_t rx_buffer_size = TransportLayer<uint16_t, '\xfe', 'P'>::get_rx_buffer_size();
 
     // Verifies the performance of payload and buffer size accessor (get) methods.
     TEST_ASSERT_EQUAL_UINT8(254, protocol.get_maximum_tx_payload_size());
@@ -872,7 +873,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
 
     // Verifies that writing the variable to the last valid index of the payload works as expected and returns a valid
     // payload size and status code
-    protocol.WriteData(test_value, TransportLayer<unsigned short, '<', '<'>::get_maximum_tx_payload_size() - 1);
+    protocol.WriteData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_tx_payload_size() - 1);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kObjectWrittenToBuffer,
         protocol.transfer_status
@@ -880,7 +881,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
 
     // Verifies that attempting to write the variable to an index beyond the payload range results in an error
     uint16_t error_index =
-        protocol.WriteData(test_value, TransportLayer<unsigned short, '<', '<'>::get_maximum_tx_payload_size());
+        protocol.WriteData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_tx_payload_size());
     TEST_ASSERT_EQUAL_UINT16(0, error_index);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kWriteObjectBufferError,
@@ -893,7 +894,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
     TEST_ASSERT_TRUE(copied);
 
     // Verifies that reading from the end of the payload functions as expected
-    protocol.ReadData(test_value, TransportLayer<unsigned short, '<', '<'>::get_maximum_rx_payload_size() - 1);
+    protocol.ReadData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_rx_payload_size() - 1);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kObjectReadFromBuffer,
         protocol.transfer_status
@@ -901,7 +902,7 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
 
     // Verifies that attempting to read from an index beyond the payload range results in an error
     error_index =
-        protocol.ReadData(test_value, TransportLayer<unsigned short, '<', '<'>::get_maximum_rx_payload_size());
+        protocol.ReadData(test_value, TransportLayer<uint16_t, '<', '<'>::get_maximum_rx_payload_size());
     TEST_ASSERT_EQUAL_UINT16(0, error_index);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kReadObjectBufferError,
@@ -1136,7 +1137,7 @@ void TestSerializedTransferProtocolDataTransmissionErrors()
     );
     mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 
-    // Verifies that the algorithm correctly handles invalid payload_size byte errors. Tests both payload_size byte
+    // Verifies that the algorithm correctly handles invalid payload_size byte errors. Tests payload_size byte
     // being too small (4) and too large (61). Note, these sizes depend on the template maximum_payload_size and
     // constructor minimum_expected_payload_size parameters.
     // Too small payload

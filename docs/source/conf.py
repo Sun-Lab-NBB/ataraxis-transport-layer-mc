@@ -1,10 +1,10 @@
 # Configuration file for the Sphinx documentation builder.
 
 # -- Project information -----------------------------------------------------
-project = 'ataraxis-micro-controller'
+project = 'ataraxis-transport-layer-mc'
 # noinspection PyShadowingBuiltins
 copyright = '2024, Ivan Kondratyev (Inkaros) & Sun Lab'
-author = 'Ivan Kondratyev (Inkaros)'
+authors = ['Ivan Kondratyev (Inkaros)', 'Jasmine Si']
 release = '1.0.0'
 
 # -- General configuration ---------------------------------------------------
@@ -17,14 +17,8 @@ templates_path = ['_templates']
 exclude_patterns = []
 
 # Breathe configuration
-breathe_projects = {"ataraxis-micro-controller": "./doxygen/xml"}
-breathe_default_project = "ataraxis-micro-controller"
-breathe_doxygen_config_options = {
-    'ENABLE_PREPROCESSING': 'YES',
-    'MACRO_EXPANSION': 'YES',
-    'EXPAND_ONLY_PREDEF': 'NO',
-    'PREDEFINED': 'PACKED_STRUCT='
-}
+breathe_projects = {"ataraxis-transport-layer-mc": "./doxygen/xml"}
+breathe_default_project = "ataraxis-transport-layer-mc"
 
 # -- Options for HTML output -------------------------------------------------
 html_theme = 'sphinx_rtd_theme'  # Directs sphinx to use RTD theme

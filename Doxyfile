@@ -4,7 +4,7 @@
 # parsed and used by sphinx to render the static .html page via 'breathe' bridge.
 
 DOXYFILE_ENCODING      = UTF-8
-PROJECT_NAME           = "ataraxis-micro-controller"
+PROJECT_NAME           = "ataraxis-transport-layer-mc"
 OUTPUT_DIRECTORY       = docs/source/doxygen
 OUTPUT_LANGUAGE        = English
 INPUT                  = src/cobs_processor.h \
@@ -12,18 +12,5 @@ INPUT                  = src/cobs_processor.h \
                          src/transport_layer.h \
                          src/shared_assets.h \
                          src/stream_mock.h \
-                         src/module.h \
-                         src/kernel.h \
-                         src/communication.h \
-                         src/modules/break_module.h \
-                         src/modules/encoder_module.h \
-                         src/modules/lick_module.h \
-                         src/modules/ttl_module.h \
-                         src/modules/valve_module.h \
-                         src/modules/torque_module.h
 GENERATE_XML           = YES
 XML_OUTPUT             = xml
-ENABLE_PREPROCESSING   = YES
-MACRO_EXPANSION        = YES
-EXPAND_ONLY_PREDEF     = NO
-PREDEFINED             = PACKED_STRUCT=

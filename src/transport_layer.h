@@ -579,7 +579,8 @@ class TransportLayer
             // checksum is calculated for the packet and appended to the end of the encoded packet. The returned size of
             // the data to send includes the CRC checksum size. If the returned combined_size is not 0, this indicates
             // that the packet has been constructed successfully.
-            if (const uint16_t combined_size = ConstructPacket(); combined_size != 0)
+            const uint16_t combined_size = ConstructPacket();
+            if (combined_size != 0)
             {
                 // Sends the data using the transmission interface class.
                 _port.write(_transmission_buffer, combined_size);
@@ -662,7 +663,8 @@ class TransportLayer
             // error was encountered during packet validation or decoding, which is communicated to the caller process
             // by returning false. The transfer_status is automatically set to error code during ValidatePacket()
             // runtime.
-            if (const uint16_t payload_size = ValidatePacket(packet_size); payload_size == 0)
+            const uint16_t payload_size = ValidatePacket(packet_size);
+            if (payload_size == 0)
             {
                 return false;
             }

@@ -23,19 +23,6 @@
   "frameworks": ["arduino"],
   "platforms": ["atmelavr", "atmelsam", "teensy"],
   "headers": "transport_layer.h",
-  "examples": [
-    {
-      "name": "Rx Tx Loop",
-      "base": "examples/rx_tx_loop",
-      "files": [
-        "rx_tx_loop.cpp",
-        "src/transport_layer.h",
-        "src/cobs_processor.h",
-        "src/crc_processor.h",
-        "src/axtlmc_shared_assets.h"
-      ]
-    }
-  ],
   "dependencies":
   [
     {

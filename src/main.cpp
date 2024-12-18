@@ -1,6 +1,8 @@
 // This file exactly matches the rx_tx_loop.cpp example and is excluded from the compiled library. It is kept here
 // to facilitate library development.
-// See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for details about the library.
+
+// See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for more details.
+// API documentation: https://ataraxis-transport-layer-mc-api-docs.netlify.app/.
 // Authors: Ivan Kondratyev (Inkaros), Jasmine Si.
 
 // Includes the core dependency for all Teensyduino projects.

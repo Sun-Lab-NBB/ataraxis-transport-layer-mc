@@ -41,8 +41,8 @@ void loop()
         // payload, and makes it available for reading).
         const bool data_received = tl_class.ReceiveData();
 
-        // If the reception was successful, reads the data, assumed to be the test array object. Note, this example
-        // is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
+        // If the reception was successful, reads the data, assumed to contain serialized test objects. Note, this
+        // example is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
         if (data_received)
         {
             // Overwrites the memory of placeholder objects with the received data.

@@ -73,7 +73,7 @@ Developers should see the [Developers](#Developers) section for more details on 
 below assume you are ***not*** a developer.
 
 1. Download this repository to your local machine using your preferred method, such as Git-cloning. Use one
-   of the stable releases from [GitHub](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc).
+   of the stable releases from [GitHub](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/releases).
 2. Unpack the downloaded tarball and move all 'src' contents into the appropriate destination 
    ('include,' 'src' or 'libs') directory of your project.
 3. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
@@ -291,7 +291,7 @@ before being submitted.
 ## Versioning
 
 We use [semantic versioning](https://semver.org/) for this project. For the versions available, see the
-[tags on this repository](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc/tags).
+[tags on this repository](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/tags).
 
 ---
 

@@ -239,7 +239,7 @@ ___
 
 ## API Documentation
 
-See the [API documentation](https://ataraxis-transport-layer-api-docs.netlify.app/) for the detailed description of 
+See the [API documentation](https://ataraxis-transport-layer-mc-api-docs.netlify.app/) for the detailed description of 
 the methods and classes exposed by components of this library.
 ___
 

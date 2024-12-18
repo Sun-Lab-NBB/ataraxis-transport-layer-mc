@@ -11,7 +11,7 @@ bidirectional communication with PC clients over USB or UART serial interfaces.
 ___
 
 ## Detailed Description
-This is a C++ implementation of the ataraxis-transport-layer (AXTL) library, designed to run on Arduino or Teensy 
+This is the C++ implementation of the ataraxis-transport-layer (AXTL) library, designed to run on Arduino or Teensy 
 microcontrollers. It provides methods for bidirectionally communicating with a host-computer running the 
 [ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) companion library written in 
 Python. The library abstracts most steps necessary for data transmission, such as serializing data into payloads, 

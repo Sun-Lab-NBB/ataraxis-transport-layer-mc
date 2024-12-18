@@ -2,6 +2,7 @@
 // ataraxis-transport-layer-pc. When used correctly, the example code will continuously transmit and receive data
 // between the microcontroller and the PC. See the GitHub repo for more details
 // https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc.
+// Authors: Ivan Kondratyev (Inkaros), Jasmine Si.
 
 // Includes the core dependency for all Teensyduino projects.
 #include <Arduino.h>

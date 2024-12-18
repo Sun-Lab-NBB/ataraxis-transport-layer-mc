@@ -7,8 +7,8 @@ Transport Layer
 .. doxygenfile:: transport_layer.h
    :project: ataraxis-transport-layer-mc
 
-Helper Assets
-=============
+Helper Classes
+==============
 
 COBS Processor
 --------------
@@ -29,7 +29,7 @@ Stream Mock
    :project: ataraxis-transport-layer-mc
 
 Shared Assets
--------------
+=================
 
 .. doxygenfile:: axtlmc_shared_assets.h
    :project: ataraxis-transport-layer-mc

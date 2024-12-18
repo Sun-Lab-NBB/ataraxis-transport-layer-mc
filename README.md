@@ -71,19 +71,18 @@ Note, installation from source is ***highly discouraged*** for everyone who is n
 Developers should see the [Developers](#Developers) section for more details on installing from source. The instructions
 below assume you are ***not*** a developer.
 
-1. Download this repository to your local machine using your preferred method, such as Git-cloning. Optionally, use one
-   of the stable releases from [GitHub](https://github.com/Sun-Lab-NBB/ataraxis-micro-controller).
-2. Remove the '[main.cpp](./src/main.cpp)' file from the 'src' directory of the project.
-3. Move all remaining '[src](./src)' contents into the appropriate destination ('include,' 'src' or 'libs') directory 
-   of your project.
-4. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access classes from this library.
+1. Download this repository to your local machine using your preferred method, such as Git-cloning. Use one
+   of the stable releases from [GitHub](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc).
+2. Unpack the downloaded tarball and move all 'src' contents into the appropriate destination 
+   ('include,' 'src' or 'libs') directory of your project.
+3. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
 
 ### Platformio
 
 1. Navigate to your platformio.ini file and add the following line to your target environment specification:
    ```lib_deps = inkaros/ataraxis-transport-layer-mc@^1.0.0```. If you already have lib_deps specification, add the 
    library specification to the existing list of used libraries.
-2. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access classes from this library.
+2. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
 ___
 
 ## Usage

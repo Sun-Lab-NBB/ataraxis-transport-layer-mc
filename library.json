@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/platformio/platformio-core/develop/platformio/assets/schema/library.json",
   "name": "ataraxis-transport-layer-mc",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A C++ library for Arduino and Teensy microcontrollers that provides methods for establishing and maintaining bidirectional communication with PC clients over USB or UART serial interfaces.",
   "keywords": "arduino, teensy, ataraxis, communication, serial",
   "repository": {

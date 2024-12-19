@@ -42,8 +42,7 @@
     ],
     "exclude":
     [
-      "./src/main.cpp",
-      "./src/stream_mock.h"
+      "./src/main.cpp"
     ]
   },
   "build": {

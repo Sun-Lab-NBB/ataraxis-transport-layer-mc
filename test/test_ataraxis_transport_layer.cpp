@@ -1,6 +1,6 @@
 // Due to certain issues with reconnecting to teensy boards for running separate test suits, this test suit acts as a
 // single centralized hub for running all available tests for all supported classes and methods of the
-// SerializedTransferProtocol library. Declare all required tests using separate functions (as needed) and then add the
+// TransportLayer library. Declare all required tests using separate functions (as needed) and then add the
 // tests to be evaluated to the RunUnityTests function at the bottom of this file. Comment unused tests out if needed.
 
 // Dependencies
@@ -9,8 +9,8 @@
 #include "axtlmc_shared_assets.h"
 #include "cobs_processor.h"   // COBSProcessor class
 #include "crc_processor.h"    // CRCProcessor class
-#include "stream_mock.h"      // StreamMock class required for SerializedTransferProtocol class testing
-#include "transport_layer.h"  // SerializedTransferProtocol class
+#include "stream_mock.h"      // StreamMock class required for TransportLayer class testing
+#include "transport_layer.h"  // TransportLayer class
 
 // This function is called automatically before each test function. Currently not used.
 void setUp()
@@ -506,7 +506,7 @@ void TestCRCProcessorErrors()
 }
 
 // Tests that the StreamMock class methods function as expected. This is a fairly minor, but necessary test to carry out
-// before testing major SerializedTransferProtocol methods.
+// before testing major TransportLayer methods.
 void TestStreamMock()
 {
     // Instantiates the StreamMock class object to be tested. StreamMock mimics the base Stream class, but exposes
@@ -637,13 +637,13 @@ void TestStreamMock()
     TEST_ASSERT_EQUAL_size_t(0, read_bytes_number);
 }
 
-// Tests WriteData() and ReadData() methods of SerializedTransferProtocol class. The test is performed as a cycle to
+// Tests WriteData() and ReadData() methods of TransportLayer class. The test is performed as a cycle to
 // allow reusing test assets. Tests writing and reading a structure, an array and a concrete value. Also, this is the
 // only method that verifies that the class variables initialize to the expected constant values and that tests using
 // different transmission and reception buffer sizes.
-void TestSerializedTransferProtocolBufferManipulation()
+void TestTransportLayerBufferManipulation()
 {
-    // Instantiates the mock serial class and the tested SerializedTransferProtocol class
+    // Instantiates the mock serial class and the tested TransportLayer class
     StreamMock<56> mock_port;
 
     // Uses different rx and tx buffer sizes
@@ -831,10 +831,10 @@ void TestSerializedTransferProtocolBufferManipulation()
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_tx_buffer, test_rx_buffer, rx_buffer_size);
 }
 
-// Tests expected error handling by WriteData() and ReadData() methods of SerializedTransferProtocol class. This is a
+// Tests expected error handling by WriteData() and ReadData() methods of TransportLayer class. This is a
 // fairly minor function, as buffer reading and writing can only fail in a small subset of cases. Uses the same payload
 // size for the _reception_buffer and the _transmission_buffer.
-void TestSerializedTransferProtocolBufferManipulationErrors()
+void TestTransportLayerBufferManipulationErrors()
 {
     // Initializes the tested class
     StreamMock<55> mock_port;
@@ -883,11 +883,11 @@ void TestSerializedTransferProtocolBufferManipulationErrors()
     );
 }
 
-// Tests major SendData() and ReceiveData() methods of the SerializedTransferProtocol class, alongside all used
+// Tests major SendData() and ReceiveData() methods of the TransportLayer class, alongside all used
 // sub-methods (ParsePacket(), ValidatePacket(), ConstructPacket()) and auxiliary methods (Available()). Note, assumes
 // lower level tests have already verified the functionality of StreamMock and buffer manipulation methods, which are
 // also used here to facilitate testing.
-void TestSerializedTransferProtocolDataTransmission()
+void TestTransportLayerDataTransmission()
 {
     // Initializes the tested class
     StreamMock<254> mock_port;  // Minimal required size
@@ -898,7 +898,7 @@ void TestSerializedTransferProtocolDataTransmission()
 
     // Instantiates separate instances of encoder classes used to verify processing results
     COBSProcessor<> cobs_class;
-    // CRC settings HAVE to be the same as used by the SerializedTransferProtocol instance.
+    // CRC settings HAVE to be the same as used by the TransportLayer instance.
     auto crc_class = CRCProcessor<uint16_t>(0x1021, 0xFFFF, 0x0000);
 
     // Generates the test array to be packaged and 'sent'
@@ -998,13 +998,13 @@ void TestSerializedTransferProtocolDataTransmission()
 }
 
 // Tests the errors and, where applicable, edge cases associated with the SendData() and ReceiveData() methods of the
-// SerializedTransferProtocol class. No auxiliary methods are tested here since they do not raise any errors. Note,
-// focuses specifically on errors raised by SerializedTransferProtocol class methods, COBS and CRC errors should be
+// TransportLayer class. No auxiliary methods are tested here since they do not raise any errors. Note,
+// focuses specifically on errors raised by TransportLayer class methods, COBS and CRC errors should be
 // tested by their respective test functions. Also, does not test errors that are generally impossible to encounter
 // without modifying the class code, such as COBS encoding due to incorrect overhead placeholder value error.
 // Note, to conserve used memory, uses CRC8 rather than CRC16. This should not affect the tested logic, but will reduce
 // the memory size reserved by these functions
-void TestSerializedTransferProtocolDataTransmissionErrors()
+void TestTransportLayerDataTransmissionErrors()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;  // Initializes to the minimal required size
@@ -1133,7 +1133,7 @@ void TestSerializedTransferProtocolDataTransmissionErrors()
     mock_port.rx_buffer[11]   = 10;  // Restores the payload_size byte value
 
     // Sets the entire rx_buffer to valid non-delimiter byte-values for the test below to work, as it has to consume
-    // most of the rx_buffer to run out of the _reception_buffer space of the SerializedTransferProtocol class.
+    // most of the rx_buffer to run out of the _reception_buffer space of the TransportLayer class.
     for (uint16_t i = 15; i < StreamMock<50>::buffer_size; i++)
     {
         mock_port.rx_buffer[i] = 11;
@@ -1152,7 +1152,7 @@ void TestSerializedTransferProtocolDataTransmissionErrors()
     mock_port.rx_buffer_index = 0;               // Resets readout index back to 0
 }
 
-void TestSerializedTransferProtocolDelimiterNotFoundError()
+void TestTransportLayerDelimiterNotFoundError()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
@@ -1187,7 +1187,7 @@ void TestSerializedTransferProtocolDelimiterNotFoundError()
     mock_port.rx_buffer_index = 0;
 }
 
-void TestSerializedTransferProtocolDelimiterFoundTooEarlyError()
+void TestTransportLayerDelimiterFoundTooEarlyError()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
@@ -1222,7 +1222,7 @@ void TestSerializedTransferProtocolDelimiterFoundTooEarlyError()
     mock_port.rx_buffer_index = 0;
 }
 
-void TestSerializedTransferProtocolPostambleTimeoutError()
+void TestTransportLayerPostambleTimeoutError()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
@@ -1295,15 +1295,15 @@ int RunUnityTests()
     RUN_TEST(TestStreamMock);
 
     // Serial Transfer Protocol Write / Read Data
-    RUN_TEST(TestSerializedTransferProtocolBufferManipulation);
-    RUN_TEST(TestSerializedTransferProtocolBufferManipulationErrors);
+    RUN_TEST(TestTransportLayerBufferManipulation);
+    RUN_TEST(TestTransportLayerBufferManipulationErrors);
 
     // Serial Transfer Protocol Send / Receive Data
-    RUN_TEST(TestSerializedTransferProtocolDataTransmission);
-    RUN_TEST(TestSerializedTransferProtocolDataTransmissionErrors);
-    RUN_TEST(TestSerializedTransferProtocolDelimiterNotFoundError);
-    RUN_TEST(TestSerializedTransferProtocolPostambleTimeoutError);
-    RUN_TEST(TestSerializedTransferProtocolDelimiterFoundTooEarlyError);
+    RUN_TEST(TestTransportLayerDataTransmission);
+    RUN_TEST(TestTransportLayerDataTransmissionErrors);
+    RUN_TEST(TestTransportLayerDelimiterNotFoundError);
+    RUN_TEST(TestTransportLayerPostambleTimeoutError);
+    RUN_TEST(TestTransportLayerDelimiterFoundTooEarlyError);
 
     return UNITY_END();
 }

@@ -5,7 +5,7 @@ project = 'ataraxis-transport-layer-mc'
 # noinspection PyShadowingBuiltins
 copyright = '2024, Ivan Kondratyev (Inkaros) & Sun Lab'
 authors = ['Ivan Kondratyev (Inkaros)', 'Jasmine Si']
-release = '1.0.1'
+release = '1.0.2'
 
 # -- General configuration ---------------------------------------------------
 extensions = [

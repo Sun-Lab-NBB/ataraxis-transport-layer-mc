@@ -1,6 +1,8 @@
 // This file exactly matches the rx_tx_loop.cpp example and is excluded from the compiled library. It is kept here
 // to facilitate library development.
 
+// This example is intended to be sued together with the quickstart loop for the companion library:
+// https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart.
 // See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for more details.
 // API documentation: https://ataraxis-transport-layer-mc-api-docs.netlify.app/.
 // Authors: Ivan Kondratyev (Inkaros), Jasmine Si.

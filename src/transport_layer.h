@@ -95,7 +95,7 @@ static constexpr uint16_t kSerialBufferSize = 256;
 #if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__) || \
     defined(__IMXRT1062__)
 // Teensy 3.x, 4.x (USB serial) maximum reception buffer size in bytes.
-static constexpr uint16_t kSerialBufferSize = 1024;
+static constexpr uint16_t kSerialBufferSize = 8192;  // Default is 4 x 2048 buffers == 8192 bytes total
 #else
 // Teensy 2.0, Teensy++ 2.0 (USB serial) maximum reception buffer size in bytes.
 static constexpr uint16_t kSerialBufferSize = 256;

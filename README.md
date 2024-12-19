@@ -94,8 +94,7 @@ interfaces. It ensures proper encoding and decoding of data packets using the Co
 protocol and ensures transmitted packet integrity via Cyclic Redundancy Check (CRC).
 
 #### Packet Anatomy:
-This class sends and receives data in the form of packets. Each packet adheres to the following general 
-layout:
+This class sends and receives data in the form of packets. Each packet adheres to the following general layout:
 
 `[START] [PAYLOAD SIZE] [COBS OVERHEAD] [PAYLOAD (1 to 254 bytes)] [DELIMITER] [CRC CHECKSUM (1 to 4 bytes)]`
 
@@ -106,8 +105,9 @@ public API. Therefore, users can safely ignore all packet-related information an
 received serialized payloads.
 
 #### Quickstart
-This is a minimal example of how to use this library. See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for 
-.cpp implementation:
+This is a minimal example of how to use this library. It is designed to be used together with the quickstart example
+of the [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart) library. 
+See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for .cpp implementation:
 
 ```
 // Includes the core dependency for all Teensyduino projects.
@@ -174,6 +174,7 @@ void loop()
     }
 }
 ```
+
 #### Key Methods
 
 ##### Sending Data
@@ -188,14 +189,16 @@ The example below showcases the sequence of steps necessary to send the data to 
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example:
 ```
 // Generates the test array to simulate the payload.
-uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
+const uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
 
-// Writes the data into the _transmission_buffer.
-tl_class.WriteData(test_array, 0);
+// Writes the data into the _transmission_buffer. The method returns the index (next_index) that can be used to add
+// another object directly behind the current object. This supports chained data writing operations, where the
+// returned index of the previous WriteData call is used as the start_index of the next WriteData call.
+uint16_t next_index = tl_class.WriteData(test_array, 0);  // Start index is 0
 
-// Sends the payload to the Stream buffer. If all steps of this process succeed, the method returns 'true' and the data
-// is handed off to the 
-bool sent_status = tl_class.SendData();
+// Sends the payload to the Stream buffer. If all steps of this process succeed, the method returns 'true' and the
+// data is handed off to the serial interface to be transmitted.
+bool sent_status = tl_class.SendData();  // This returns True if data was sent successfully.
 ```
 
 #### Receiving Data
@@ -213,27 +216,22 @@ There are three key methods associated with receiving data from the PC:
 The example below showcases the sequence of steps necessary to receive data from the PC and assumes TransportLayer
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example: 
 ```
-// Packages and sends the contents of the transmission buffer that were written above to the PC.
-tl_class.SendData();  //
+// Generates the test array to which the received data will be written.
+uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
 
-if (tl_class.Available())
+// Blocks until the data is received from the PC
+while (!tl_class.Available())
 {
-    tl_class.ReceiveData();
 }
-uint16_t value    = 44321;
-uint8_t array[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
 
-struct MyStruct
-{
-        uint8_t a  = 60;
-        uint16_t b = 12345;
-        uint32_t c = 1234567890;
-} test_structure;
+// Parses the received data. Note, this method internally calls 'Available', so it is safe to call ReceiveData()
+// instead of Available() in the 'while' loop above without changing how this example behaves.
+bool receive_status = tl_class.ReceiveData();  // Returns True if the data was received and passed verification.
 
-// Overwrites the test objects with the data stored inside the buffer
-uint16_t next_index = tl_class.ReadData(value);  // ReadData defaults to start_index 0 if it is not provided
-uint16_t next_index = tl_class.ReadData(array, next_index);
-uint16_t next_index = tl_class.ReadData(test_structure, next_index);
+// Overwrites the test_array with the data received from the PC. Returns the index that can be sued to read the
+// next object in the received data payload. This supports chained data reading operations, where the returned
+// index of the previous ReadData call can be used as the start_index for the next ReadData call.
+uint16_t next_index = tl_class.ReadData(test_array, 0);  // Start index is 0.
 ```
 ___
 
@@ -253,9 +251,10 @@ modify the source code of this library.
 1. If you do not already have it installed, install [Platformio](https://platformio.org/install/integration) either as
    a standalone IDE or as a plugin for your main C++ IDE. As part of this process, you may need to install a standalone
    version of [Python](https://www.python.org/downloads/).
-2. Download this repository to your local machine using your preferred method, such as git-cloning.
-3. ```cd``` to the root directory of the project using your command line interface of choice. Make sure the root 
-   contains the `platformio.ini` file.
+2. Download this repository to your local machine using your preferred method, such as git-cloning. If necessary, unpack
+   and move the project directory to the appropriate location on your system.
+3. ```cd``` to the root directory of the project using your command line interface of choice. Make sure it contains
+   the `platformio.ini` file.
 4. Run ```pio project init ``` to initialize the project on your local machine. Provide additional flags to this command
    as needed to properly configure the project for your specific needs. See 
    [Platformio API documentation](https://docs.platformio.org/en/latest/core/userguide/project/cmd_init.html) for 
@@ -312,7 +311,9 @@ This project is licensed under the GPL3 License: see the [LICENSE](LICENSE) file
 - All [Sun Lab](https://neuroai.github.io/sunlab/) members for providing the inspiration and comments during the 
   development of this library.
 - [PowerBroker2](https://github.com/PowerBroker2) and his 
-[SerialTransfer](https://github.com/PowerBroker2/SerialTransfer) for inspiring this library and serving as an example 
-and benchmark. Check SerialTransfer as a good alternative with non-overlapping functionality that may be better for your
-project.
+  [SerialTransfer](https://github.com/PowerBroker2/SerialTransfer) for inspiring this library and serving as an example 
+  and benchmark. Check SerialTransfer as a good alternative with non-overlapping functionality that may be better for 
+  your project.
+- The creators of all other projects used in our development automation pipelines [see tox.ini](tox.ini) and in our 
+  source code [see platformio.ini](platformio.ini).
 ---

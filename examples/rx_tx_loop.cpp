@@ -1,7 +1,9 @@
 // This example is intended to be used together with the rx_tx_loop example of the Python companion library
 // ataraxis-transport-layer-pc. When used correctly, the example code will continuously transmit and receive data
 // between the microcontroller and the PC.
-//
+
+// This example is intended to be sued together with the quickstart loop for the companion library:
+// https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart.
 // See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for more details.
 // API documentation: https://ataraxis-transport-layer-mc-api-docs.netlify.app/.
 // Authors: Ivan Kondratyev (Inkaros), Jasmine Si.

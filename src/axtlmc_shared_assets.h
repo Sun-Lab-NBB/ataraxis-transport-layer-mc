@@ -1,21 +1,6 @@
 /**
  * @file
- * @brief The header-only file that stores all assets intended to be shared between library classes.
- *
- * @section axtlmc_sa_description Description:
- *
- * This file contains:
- * - axtlmc_shared_assets namespace that stores general-purpose assets shared between library classes. This includes
- * implementations of some std:: namespace functions, such as is_same_v.
- *
- * @section axtlmc_sa_developer_notes Developer Notes:
- *
- * The primary reason for having this file is to store shared byte-code enumerations and structures in the same place.
- * Many of the codes available through this file have to be unique across the library and / or Ataraxis project as
- * a whole.
- *
- * @section axtlmc_sa_dependencies Dependencies:
- * - Arduino.h for Arduino platform functions and macros and cross-compatibility with Arduino IDE (to an extent).
+ * @brief This file provides the assets shared between all library components.
  */
 
 #ifndef AXTLMC_SHARED_ASSETS_H
@@ -25,9 +10,9 @@
 #include <Arduino.h>
 
 /**
- * @brief Runtime parameters structure with packed memory layout.
+ * @brief Defines the type for a structure that uses the packed memory layout.
  *
- * Uses packed attribute to ensure the structure can be properly serialized during data transmission.
+ * This structure type is used for creating all library structures used in receiving or transmitting data.
  */
 #if defined(__GNUC__) || defined(__clang__)
 #define PACKED_STRUCT __attribute__((packed))
@@ -37,32 +22,27 @@
 
 /**
  * @namespace axtlmc_shared_assets
- * @brief Provides all assets (structures, enumerations, functions) that are intended to be shared between the classes
- * of the library.
- *
- * The shared assets are primarily used to simplify library development by storing co-dependent assets in the same
- * place. Additionally, it simplifies using these assets with template classes from the library.
+ * @brief Provides all assets (structures, enumerations, functions) that are intended to be shared between library
+ * components.
  */
 namespace axtlmc_shared_assets
 {
     /**
      * @enum kCOBSProcessorCodes
-     * @brief Assigns meaningful names to all status codes used by the COBSProcessor class.
+     * @brief Defines the status codes used by the COBSProcessor class.
      *
-     * @note Due to the unified approach to status-coding in this library, this enumeration should only use code values
-     * in the range of 11 through 50. This is to simplify chained error handling in the TransportLayer class of the
-     * library.
+     * @note All codes in this enumeration must use values between 11 and 50.
      */
     enum class kCOBSProcessorCodes : uint8_t
     {
         kStandby                       = 11,  ///< The value used to initialize the cobs_status variable
-        kEncoderTooSmallPayloadSize    = 12,  ///< Encoder failed to encode payload because payload size is too small
-        kEncoderTooLargePayloadSize    = 13,  ///< Encoder failed to encode payload because payload size is too large
+        kEncoderTooSmallPayloadSize    = 12,  ///< Encoder failed to encode payload because its size is too small
+        kEncoderTooLargePayloadSize    = 13,  ///< Encoder failed to encode payload because its size is too large
         kEncoderPacketLargerThanBuffer = 14,  ///< Encoded payload buffer is too small to accommodate the packet
         kPayloadAlreadyEncoded         = 15,  ///< Cannot encode payload as it is already encoded (overhead value != 0)
         kPayloadEncoded                = 16,  ///< Payload was successfully encoded into a transmittable packet
-        kDecoderTooSmallPacketSize     = 17,  ///< Decoder failed to decode the packet because packet size is too small
-        kDecoderTooLargePacketSize     = 18,  ///< Decoder failed to decode the packet because packet size is too large
+        kDecoderTooSmallPacketSize     = 17,  ///< Decoder failed to decode the packet because its size is too small
+        kDecoderTooLargePacketSize     = 18,  ///< Decoder failed to decode the packet because its size is too large
         kDecoderPacketLargerThanBuffer = 19,  ///< Packet size to be decoded is larger than the storage buffer size
         kDecoderUnableToFindDelimiter  = 20,  ///< Decoder failed to find the delimiter at the end of the packet
         kDecoderDelimiterFoundTooEarly = 21,  ///< Decoder found a delimiter before reaching the end of the packet
@@ -72,11 +52,9 @@ namespace axtlmc_shared_assets
 
     /**
      * @enum kCRCProcessorCodes
-     * @brief Assigns meaningful names to all status codes used by the CRCProcessor class.
+     * @brief Defines the status codes used by the CRCProcessor class.
      *
-     * @note Due to the unified approach to error-code handling in this library, this enumeration should only use code
-     * values in the range of 51 through 100. This is to simplify chained error handling in the
-     * TransportLayer class of the library.
+     * @note All codes in this enumeration must use values between 51 and 100.
      */
     enum class kCRCProcessorCodes : uint8_t
     {
@@ -85,17 +63,15 @@ namespace axtlmc_shared_assets
         kCRCChecksumCalculated              = 53,  ///< Checksum was successfully calculated
         kAddCRCChecksumBufferTooSmall       = 54,  ///< Not enough remaining buffer space to add checksum to buffer
         kCRCChecksumAddedToBuffer           = 55,  ///< Checksum was successfully added to the buffer
-        kReadCRCChecksumBufferTooSmall      = 56,  ///< Not enough remaining space inside buffer to get checksum from it
+        kReadCRCChecksumBufferTooSmall      = 56,  ///< The remaining buffer space is too small to store the checksum
         kCRCChecksumReadFromBuffer          = 57,  ///< Checksum was successfully read from the buffer
     };
 
     /**
      * @enum kTransportLayerCodes
-     * @brief Assigns meaningful names to all status codes used by the TransportLayer class.
+     * @brief Defines the status codes used by the TransportLayer class.
      *
-     * @note Due to the unified approach to error-code handling in this library, this enumeration should only use code
-     * values in the range of 101 through 150. This is to simplify chained error handling in the
-     * TransportLayer class of the library.
+     * @note All codes in this enumeration must use values between 101 and 150.
      */
     enum class kTransportLayerCodes : uint8_t
     {
@@ -117,13 +93,13 @@ namespace axtlmc_shared_assets
         kObjectWrittenToBuffer       = 116,  ///< The object has been written to the buffer
         kReadObjectBufferError       = 117,  ///< Not enough bytes in the buffer payload region to read the object from
         kObjectReadFromBuffer        = 118,  ///< The object has been read from the buffer
-        kDelimiterNotFoundError      = 119,  ///< Delimiter byte not found at the end of the packet
+        kDelimiterNotFoundError      = 119,  ///< Delimiter byte was not found at the end of the packet
         kDelimiterFoundTooEarlyError = 120,  ///< Delimiter byte was found before reaching the end of the packet
         kPostambleTimeoutError       = 121,  ///< The Postamble was not received within the specified time frame
     };
 
-    // Since Arduino Mega (the lower-end board this code was tested with) boards do not have access to 'cstring' header
-    // that is available to Teensy, some assets had to be reimplemented manually. They are implemented in as
+    // Since Arduino Mega (the lower-end board this code was tested with) boards do not have access to the 'cstring'
+    // header that is available to Teensy, some assets had to be reimplemented manually. They are implemented in as
     // similar of a way as possible to be drop-in replaceable with std:: namespace.
 
     /**
@@ -132,8 +108,7 @@ namespace axtlmc_shared_assets
      * @tparam T The first type.
      * @tparam U The second type.
      *
-     * This struct is used to compare two types at compile-time. It defines a static constant member `value` which is
-     * set to `false` by default, indicating that the two types are different.
+     * This struct is used to compare two types at compile-time.
      */
     template <typename T, typename U>
     struct is_same
@@ -143,12 +118,11 @@ namespace axtlmc_shared_assets
     };
 
     /**
-      * @brief Specialization of is_same for the case when both types are the same.
+      * @brief A specialization of the 'is_same' structure for the case when both types are the same.
       *
       * @tparam T The type to compare.
       *
-      * This specialization is used when both type parameters are the same. In this case, the static constant member
-      * `value` is set to `true`, indicating that the types are indeed the same.
+      * This specialization is used when both type parameters are the same.
       */
     template <typename T>
     struct is_same<T, T>
@@ -158,7 +132,7 @@ namespace axtlmc_shared_assets
     };
 
     /**
-     * @brief A helper variable template that provides a convenient way to access the value of is_same.
+     * @brief A helper variable template that provides a convenient way to access the value of the 'is_same' structure.
      *
      * @tparam T The first type.
      * @tparam U The second type.

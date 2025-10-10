@@ -26,7 +26,7 @@ void TestCOBSProcessor()
     // Prepares test assets
     uint8_t payload_buffer[258];                         // Initializes test buffer
     memset(payload_buffer, 22, sizeof(payload_buffer));  // Sets all values to 22
-    COBSProcessor<> cobs_processor;                      // Instantiates the class object to be tested
+    COBSProcessor cobs_processor;                        // Instantiates the class object to be tested
 
     // Creates a test payload using the format: start [0], payload_size [1], overhead [2], payload [3 to 12] (10 total),
     // delimiter [13]
@@ -40,9 +40,8 @@ void TestCOBSProcessor()
     // state, the overhead is reset to 0, but delimiter byte is not changed. Used to test the decoding result.
     const uint8_t decoded_packet[14] = {129, 10, 0, 1, 0, 3, 0, 0, 0, 7, 0, 9, 10, 0};
 
-    constexpr uint8_t payload_size         = 10;    // Tested payload size, for payload generated above
-    constexpr uint8_t packet_size          = 12;    // Tested packet size, for the decoder test
-    constexpr uint8_t delimiter_byte_value = 0x00;  // Tested delimiter byte value, uses the preferred default of 0
+    constexpr uint8_t payload_size = 10;  // Tested payload size, for payload generated above
+    constexpr uint8_t packet_size  = 12;  // Tested packet size, for the decoder test
 
     // Verifies the unencoded packet matches pre-test expectations
     TEST_ASSERT_EQUAL_UINT8_ARRAY(initial_packet, payload_buffer, sizeof(initial_packet));
@@ -54,7 +53,7 @@ void TestCOBSProcessor()
     );
 
     // Encodes test payload
-    const uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer, delimiter_byte_value);
+    const uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer);
 
     // Verifies the encoding runtime status
     TEST_ASSERT_EQUAL_UINT8(
@@ -69,7 +68,7 @@ void TestCOBSProcessor()
     TEST_ASSERT_EQUAL_UINT8_ARRAY(encoded_packet, payload_buffer, sizeof(encoded_packet));
 
     // Decodes test payload
-    const uint16_t decoded_size = cobs_processor.DecodePayload(payload_buffer, delimiter_byte_value);
+    const uint16_t decoded_size = cobs_processor.DecodePayload(payload_buffer);
 
     // Verifies the decoding runtime status
     TEST_ASSERT_EQUAL_UINT8(
@@ -98,7 +97,7 @@ void TestCOBSProcessor()
 void TestCOBSProcessorErrors()
 {
     // Instantiates the class object to be tested
-    COBSProcessor<> cobs_processor;
+    COBSProcessor cobs_processor;
 
     // Generates test buffer and sets every value inside to 22
     uint8_t payload_buffer[258];
@@ -111,46 +110,46 @@ void TestCOBSProcessorErrors()
     // test code.
 
     // Verifies that payloads with minimal size are encoded correctly
-    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorLimits::kMinPayloadSize);
-    uint16_t result   = cobs_processor.EncodePayload(payload_buffer, 0);
+    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorParameters::kMinPayloadSize);
+    uint16_t result   = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kPayloadEncoded),
         cobs_processor.cobs_status
     );
-    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorLimits::kMinPacketSize), result);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorParameters::kMinPacketSize), result);
 
     // Verifies packets with minimal size are decoded correctly. Uses the packet encoded above.
-    result = cobs_processor.DecodePayload(payload_buffer, 0);
+    result = cobs_processor.DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kPayloadDecoded),
         cobs_processor.cobs_status
     );
-    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorLimits::kMinPayloadSize), result);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorParameters::kMinPayloadSize), result);
 
     // Verifies that payloads with maximal size are encoded correctly
-    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorLimits::kMaxPayloadSize);
-    result            = cobs_processor.EncodePayload(payload_buffer, 0);
+    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorParameters::kMaxPayloadSize);
+    result            = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kPayloadEncoded),
         cobs_processor.cobs_status
     );
-    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorLimits::kMaxPacketSize), result);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorParameters::kMaxPacketSize), result);
 
     // Verifies that packets with maximal size are decoded correctly. Uses the packet encoded above.
-    result = cobs_processor.DecodePayload(payload_buffer, 0);
+    result = cobs_processor.DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kPayloadDecoded),
         cobs_processor.cobs_status
     );
-    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorLimits::kMaxPayloadSize), result);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kCOBSProcessorParameters::kMaxPayloadSize), result);
 
     // Verifies that unsupported (too high / too low) ranges give expected error codes that can be decoded using the
     // enumerator class. To do so, shifts the payload/packet size 1 value above or below the limit and tests for the
     // correct returned error code.
 
     // Tests too small payload size encoder error
-    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorLimits::kMinPayloadSize) - 1;
-    result            = cobs_processor.EncodePayload(payload_buffer, 0);
+    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorParameters::kMinPayloadSize) - 1;
+    result            = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kEncoderTooSmallPayloadSize),
         cobs_processor.cobs_status
@@ -159,7 +158,7 @@ void TestCOBSProcessorErrors()
 
     // Tests too small packet size decoder error. Uses the same payload size as above (packet size is derived from
     // payload size).
-    result = cobs_processor.DecodePayload(payload_buffer, 0);
+    result = cobs_processor.DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kDecoderTooSmallPacketSize),
         cobs_processor.cobs_status
@@ -167,8 +166,8 @@ void TestCOBSProcessorErrors()
     TEST_ASSERT_EQUAL_UINT16(0, result);
 
     // Tests too large payload size encoder error
-    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorLimits::kMaxPayloadSize) + 1;
-    result            = cobs_processor.EncodePayload(payload_buffer, 0);
+    payload_buffer[1] = static_cast<uint8_t>(kCOBSProcessorParameters::kMaxPayloadSize) + 1;
+    result            = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kEncoderTooLargePayloadSize),
         cobs_processor.cobs_status
@@ -176,7 +175,7 @@ void TestCOBSProcessorErrors()
     TEST_ASSERT_EQUAL_UINT16(0, result);
 
     // Tests too large packet size decoder error. Uses the same payload size as above.
-    result = cobs_processor.DecodePayload(payload_buffer, 0);
+    result = cobs_processor.DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kDecoderTooLargePacketSize),
         cobs_processor.cobs_status
@@ -199,14 +198,14 @@ void TestCOBSProcessorErrors()
 
     // Encodes the payload of size 15, inserting a delimiter (0) byte at index 16, generating a packet of size 17
     payload_buffer[1]     = 15;
-    uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer, 0);
+    uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(17, encoded_size);
 
     // Decodes the packet of size 13 (17-4), which is a valid size. The process should abort before the delimiter at
     // index 16 is reached with the appropriate error code. Tests both the error code and that the decoder that uses a
     // while loop exits the loop as expected instead of overwriting the 'out-of-limits' buffer memory.
     payload_buffer[1] = 13;
-    result            = cobs_processor.DecodePayload(payload_buffer, 0);
+    result            = cobs_processor.DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kDecoderUnableToFindDelimiter),
         cobs_processor.cobs_status
@@ -225,7 +224,7 @@ void TestCOBSProcessorErrors()
     payload_buffer[1] = 15;  // Also restores the payload_size to the proper size
 
     // Tests delimiter found too early error code
-    result = cobs_processor.DecodePayload(payload_buffer, 0);
+    result = cobs_processor.DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kDecoderDelimiterFoundTooEarly),
         cobs_processor.cobs_status
@@ -235,7 +234,7 @@ void TestCOBSProcessorErrors()
     // Tests that calling a decoder on a packet with overhead byte set to 0 produces the expected error code
     // In this particular case, the error would correctly prevent calling decoder on the same data twice.
     // Also ensure the error takes precedence over the kDecoderDelimiterFoundTooEarly error.
-    result = cobs_processor.DecodePayload(payload_buffer, 0);
+    result = cobs_processor.DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kPacketAlreadyDecoded),
         cobs_processor.cobs_status
@@ -246,7 +245,7 @@ void TestCOBSProcessorErrors()
     payload_buffer[2] = 3;  // Resets the overhead byte to a non-0 value
 
     // Tests correct kPayloadAlreadyEncoded error
-    result = cobs_processor.EncodePayload(payload_buffer, 0);
+    result = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kPayloadAlreadyEncoded),
         cobs_processor.cobs_status
@@ -258,7 +257,7 @@ void TestCOBSProcessorErrors()
 
     // Attempts to encode a payload with size 20 using a buffer with size 5. This is not allowed and should trigger an
     // error
-    result = cobs_processor.EncodePayload(test_buffer, 11);
+    result = cobs_processor.EncodePayload(test_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kEncoderPacketLargerThanBuffer),
         cobs_processor.cobs_status
@@ -266,7 +265,7 @@ void TestCOBSProcessorErrors()
     TEST_ASSERT_EQUAL_UINT16(0, result);
 
     // Same as above, but tests the error for the decoder function
-    result = cobs_processor.DecodePayload(test_buffer, 11);
+    result = cobs_processor.DecodePayload(test_buffer);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(axtlmc_shared_assets::kCOBSProcessorCodes::kDecoderPacketLargerThanBuffer),
         cobs_processor.cobs_status
@@ -647,7 +646,7 @@ void TestTransportLayerBufferManipulation()
     StreamMock<56> mock_port;
 
     // Uses different rx and tx buffer sizes
-    TransportLayer<uint16_t, 56, 45> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 56, 45> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 20000, false);
 
     // Statically extracts the buffer sizes using accessor methods.
     static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, 56, 45>::get_tx_buffer_size();
@@ -706,7 +705,7 @@ void TestTransportLayerBufferManipulation()
     } __attribute__((packed)) test_structure;
 
     const uint8_t test_array[10] = {1, 2, 3, 4, 5, 6, 7, 8, 101, 255};
-    constexpr int32_t test_value  = -62312;
+    constexpr int32_t test_value = -62312;
 
     // Writes test objects into the _transmission_buffer
     uint16_t next_index = 0;
@@ -780,7 +779,7 @@ void TestTransportLayerBufferManipulation()
     } __attribute__((packed)) test_structure_new;
 
     uint8_t test_array_new[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    int32_t test_value_new      = 0;
+    int32_t test_value_new     = 0;
 
     // Copies the contents of the _transmission_buffer to the _reception_buffer to test reception buffer manipulation
     // (reading)
@@ -839,7 +838,7 @@ void TestTransportLayerBufferManipulationErrors()
     // Initializes the tested class
     StreamMock<55> mock_port;
     // Uses same rx and tx payload sizes
-    TransportLayer<uint16_t, 55, 55> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 55, 55> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 20000, false);
 
     // Initializes a test variable
     uint8_t test_value = 223;
@@ -874,8 +873,7 @@ void TestTransportLayerBufferManipulationErrors()
     );
 
     // Verifies that attempting to read from an index beyond the payload range results in an error
-    error_index =
-        protocol.ReadData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_rx_payload_size());
+    error_index = protocol.ReadData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_rx_payload_size());
     TEST_ASSERT_EQUAL_UINT16(0, error_index);
     TEST_ASSERT_EQUAL_UINT8(
         axtlmc_shared_assets::kTransportLayerCodes::kReadObjectBufferError,
@@ -894,10 +892,10 @@ void TestTransportLayerDataTransmission()
 
     // Uses identical rx and tx payload sizes and tests maximal supported sizes for both buffers. Also uses a CRC-16
     // to test multibyte CRC handling.
-    TransportLayer<uint16_t> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 0, 20000, false);
+    TransportLayer<uint16_t> protocol(mock_port, 0x1021, 0xFFFF, 0x0000, 129, 20000, false);
 
     // Instantiates separate instances of encoder classes used to verify processing results
-    COBSProcessor<> cobs_class;
+    COBSProcessor cobs_class;
     // CRC settings HAVE to be the same as used by the TransportLayer instance.
     auto crc_class = CRCProcessor<uint16_t>(0x1021, 0xFFFF, 0x0000);
 
@@ -924,7 +922,7 @@ void TestTransportLayerDataTransmission()
     // Simulates COBS encoding the buffer. Note, assumes COBSProcessor methods have been tested before running this
     // test. Specifically, targets the 10-value payload starting from index 3. Uses the same delimiter byte value as
     // does the serial protocol class
-    const uint16_t packet_size = cobs_class.EncodePayload(buffer_array, 0);
+    const uint16_t packet_size = cobs_class.EncodePayload(buffer_array);
 
     // Calculates the CRC for the COBS-encoded buffer. Also assumes that the CRCProcessor methods have been tested
     // before running this test. The CRC calculation includes the overhead byte, the encoded payload and the inserted
@@ -1008,7 +1006,7 @@ void TestTransportLayerDataTransmissionErrors()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;  // Initializes to the minimal required size
-    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 20000, false);
 
     // Instantiates crc encoder class separately to generate test data
     auto crc_class = CRCProcessor<uint16_t>(0x07, 0x00, 0x00);
@@ -1156,7 +1154,7 @@ void TestTransportLayerDelimiterNotFoundError()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
-    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 20000, false);
     CRCProcessor<uint16_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload
@@ -1191,7 +1189,7 @@ void TestTransportLayerDelimiterFoundTooEarlyError()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
-    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 20000, false);
     CRCProcessor<uint16_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload
@@ -1226,7 +1224,7 @@ void TestTransportLayerPostambleTimeoutError()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
-    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 0, 20000, false);
+    TransportLayer<uint16_t, 50, 50, 5> protocol(mock_port, 0x07, 0x00, 0x00, 129, 20000, false);
     CRCProcessor<uint16_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload

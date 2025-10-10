@@ -313,14 +313,12 @@ class TransportLayer
             const PolynomialType crc_initial_value   = 0x00,
             const PolynomialType crc_final_xor_value = 0x00,
             const uint8_t start_byte                 = 129,
-            const uint8_t delimiter_byte             = 0,
             const uint32_t timeout                   = 20000,
             const bool allow_start_byte_errors       = false
         ) :
             _port(communication_port),
             _crc_processor(crc_polynomial, crc_initial_value, crc_final_xor_value),
             kStartByte(start_byte),
-            kDelimiterByte(delimiter_byte),
             kTimeout(timeout),
             allow_start_byte_errors(allow_start_byte_errors),
             _transmission_buffer {},  // Initialization doubles up as resetting buffers to 0
@@ -971,7 +969,7 @@ class TransportLayer
         /// The local instance of the COBSProcessor class that provides the methods to encode and decode packets using
         /// COBS protocol. See the class documentation for more details on the process and the functionality of the
         /// class.
-        COBSProcessor<> _cobs_processor {};  // Default template argument values match static variables of this class.
+        COBSProcessor _cobs_processor;
 
         /// The local instance of the CRCProcessor class that provides the methods to calculate the CRC checksum for
         /// packets and save and read the checksum from class buffers. See the class documentation for more details on
@@ -981,11 +979,6 @@ class TransportLayer
         /// The byte-value used to indicate the start of the packet. Encountering this byte in the evaluated incoming
         /// byte-stream is the only trigger that starts packet reception cycle.
         const uint8_t kStartByte;
-
-        /// The byte-value used to indicate the end of the packet. All instances of this byte in the payload are
-        /// eliminated using COBS. All valid COBS-encoded packets should end in the delimiter byte value, and this
-        /// heuristic is used as a secondary verification step to ensure packet integrity.
-        const uint8_t kDelimiterByte;
 
         /// The maximum number of microseconds (us) to wait between receiving bytes of the packet. In packet reception
         /// mode, the algorithm will wait for the specified number of microseconds before declaring the packet stale and
@@ -1038,7 +1031,7 @@ class TransportLayer
         /**
          * @brief Constructs the serialized packet using the payload stored inside the _transmission_buffer.
          *
-         * Specifically, first uses COBS encoding to eliminate all instances of the kDelimiterByte value inside the
+         * Specifically, first uses COBS encoding to eliminate all instances of the delimiter byte value inside the
          * payload. The payload is expected be found starting at index 3 of the buffer, and its size is obtained by
          * reading the payload_size tracker found at index 1. After COBS encoding, the delimiter is appended to the end
          * of the new payload. Note, the packet includes the statically allocated preamble (start byte and payload size)
@@ -1064,7 +1057,7 @@ class TransportLayer
             // placeholder at index 2 and expects the buffer to contain enough space to append the delimiter byte to
             // the end of the used payload region. Note, the returned packet size EXCLUDES the preamble
             // (start byte and payload size).
-            uint16_t packet_size = _cobs_processor.EncodePayload(_transmission_buffer, kDelimiterByte);
+            uint16_t packet_size = _cobs_processor.EncodePayload(_transmission_buffer);
 
             // If the encoder runs into an error, it returns 0 to indicate that the payload was not encoded. In this
             // case, transfers the error status code from the COBS processor status tracker to transfer_status and
@@ -1245,7 +1238,7 @@ class TransportLayer
                     bytes_read++;
                     timeout_timer = 0;  // Resets the timer whenever a byte is successfully read and the loop is active
 
-                    if (byte_value == kDelimiterByte)
+                    if (byte_value == kCOBSProcessorParameters::kDelimiterByte)
                     {
                         delimiter_found = true;  // Sets the flag to indicate that the delimiter byte was found
                         break;                   // Breaks out of the loop
@@ -1374,11 +1367,11 @@ class TransportLayer
             }
 
             // If the CRC check succeeds, attempts to decode COBS-encoded data. This serves two purposes. First, it
-            // restores any encoded variable that was previously an instance of kDelimiterByte back to the original
+            // restores any encoded variable that was previously the delimiter byte value (0) back to the original
             // value. Second, it acts as a secondary verification step, since COBS encoding ensures the data is
             // organized in a particular fashion and if that is not true, the data is likely corrupted and the CRC
             // failed to recognize that.
-            const uint16_t payload_size = _cobs_processor.DecodePayload(_reception_buffer, kDelimiterByte);
+            const uint16_t payload_size = _cobs_processor.DecodePayload(_reception_buffer);
 
             // Verifies that the COBS decoder runtime was successful. Uses the heuristic that the successful COBS
             // decoder runtime always returns a non-zero payload_size, and an erroneous one always returns 0 to

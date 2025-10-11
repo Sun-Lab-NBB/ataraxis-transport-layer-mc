@@ -395,14 +395,14 @@ void TestCRCProcessor()
     // Verifies that the crc_status initializes to the expected value
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kCRCProcessorCodes::kStandby), crc_processor.crc_status);
     // Runs the checksum generation function on the test packet
-    uint16_t result = crc_processor.CalculatePacketCRCChecksum(test_packet, 0, 6);
+    uint16_t result = crc_processor.CalculateCRCChecksum(test_packet, 0, 6);
 
     // Verifies that the CRC checksum generator returns the expected number and status
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumCalculated), crc_processor.crc_status);
     TEST_ASSERT_EQUAL_HEX16(0xF54E, result);
 
     // Stuffs the CRC checksum into the test buffer
-    const uint16_t buffer_size = crc_processor.AddCRCChecksumToBuffer(test_packet, 6, result);
+    const uint16_t buffer_size = crc_processor.AddCRCChecksum(test_packet, 6, result);
 
     // Verifies that the addition function works as expected and returns the correct used size of the buffer and status
     // code
@@ -413,7 +413,7 @@ void TestCRCProcessor()
     TEST_ASSERT_EQUAL_UINT16(8, buffer_size);
 
     // Runs the checksum on the packet and the two CRC bytes appended to it
-    result = crc_processor.CalculatePacketCRCChecksum(test_packet, 0, 8);
+    result = crc_processor.CalculateCRCChecksum(test_packet, 0, 8);
 
     // Ensures that including CRC checksum in the input buffer correctly returns 0. This is a standard property of
     // CRC checksums often used in-place of direct checksum comparison when CRC-verified payload is checked upon
@@ -434,7 +434,7 @@ void TestCRCProcessorErrors()
     // Attempts to generate a CRC for the buffer above using an incorrect input packet_size of 11. Since this is smaller
     // than the buffer size of 5, the function should return 0 (default error return) and set the crc_status to an error
     // code (this is the critical part tested here).
-    uint16_t checksum = crc_processor.CalculatePacketCRCChecksum(test_buffer, 0, 11);
+    uint16_t checksum = crc_processor.CalculateCRCChecksum(test_buffer, 0, 11);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kCRCProcessorCodes::kCalculateCRCChecksumBufferTooSmall),
         crc_processor.crc_status
@@ -442,13 +442,13 @@ void TestCRCProcessorErrors()
     TEST_ASSERT_EQUAL_UINT16(0, checksum);
 
     // Generates the checksum of the test buffer using correct input parameters
-    checksum = crc_processor.CalculatePacketCRCChecksum(test_buffer, 0, 5);
+    checksum = crc_processor.CalculateCRCChecksum(test_buffer, 0, 5);
 
     // Verifies that the AddCRCChecksumToBuffer function raises the correct error if the input buffer size is too small
     // to accommodate enough bytes to store the crc checksum starting at the start_index. Here, the start
     // index of 4 is inside the buffer, but 2 bytes are needed for crc 16 checksum and index 5 is not available, leading
     // to an error.
-    uint16_t result = crc_processor.AddCRCChecksumToBuffer(test_buffer, 4, checksum);
+    uint16_t result = crc_processor.AddCRCChecksum(test_buffer, 4, checksum);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kCRCProcessorCodes::kAddCRCChecksumBufferTooSmall),
         crc_processor.crc_status
@@ -861,11 +861,11 @@ void TestTransportLayerDataTransmission()
     // Calculates the CRC for the COBS-encoded buffer. Also assumes that the CRCProcessor methods have been tested
     // before running this test. The CRC calculation includes the overhead byte, the encoded payload and the inserted
     // delimiter byte. Note, the returned checksum depends on the used polynomial type.
-    const uint16_t crc_checksum = crc_class.CalculatePacketCRCChecksum(buffer_array, 2, packet_size);
+    const uint16_t crc_checksum = crc_class.CalculateCRCChecksum(buffer_array, 2, packet_size);
 
     // Adds the CRC to the end of the buffer. The insertion location has to be statically shifted to account for the
     // metadata preamble bytes
-    crc_class.AddCRCChecksumToBuffer(buffer_array, packet_size + 2, crc_checksum);
+    crc_class.AddCRCChecksum(buffer_array, packet_size + 2, crc_checksum);
 
     // Verifies that the packet inside the StreamMock tx_buffer is the same as the packet created via the manual steps
     // above.
@@ -963,8 +963,8 @@ void TestTransportLayerDataTransmissionErrors()
     uint8_t test_buffer[15] = {129, 10, 5, 1, 2, 3, 4, 3, 6, 7, 3, 9, 10, 0, 0};
 
     // Calculates and adds packet CRC checksum to the postamble section of the test_buffer array
-    const uint16_t crc_checksum = crc_class.CalculatePacketCRCChecksum(test_buffer, 2, 12);
-    crc_class.AddCRCChecksumToBuffer(test_buffer, 14, crc_checksum);
+    const uint16_t crc_checksum = crc_class.CalculateCRCChecksum(test_buffer, 2, 12);
+    crc_class.AddCRCChecksum(test_buffer, 14, crc_checksum);
 
     // Writes the components to the mock class rx buffer to simulate data reception
     // Note, adjusts the size to account for the fact mock class uses uint16 buffers
@@ -1090,8 +1090,8 @@ void TestTransportLayerDelimiterNotFoundError()
     mock_port.rx_buffer[13] = 1;  // Changes delimiter byte to non zero
 
     // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
-    const uint16_t crc_checksum = crc_class.CalculatePacketCRCChecksum(test_buffer, 2, 12);
-    crc_class.AddCRCChecksumToBuffer(test_buffer, 14, crc_checksum);
+    const uint16_t crc_checksum = crc_class.CalculateCRCChecksum(test_buffer, 2, 12);
+    crc_class.AddCRCChecksum(test_buffer, 14, crc_checksum);
 
     // Simulate receiving data
     protocol.ReceiveData();
@@ -1125,8 +1125,8 @@ void TestTransportLayerDelimiterFoundTooEarlyError()
     mock_port.rx_buffer[7] = 0;  // Add delimiter value too early
 
     // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
-    const uint16_t crc_checksum = crc_class.CalculatePacketCRCChecksum(test_buffer, 2, 12);
-    crc_class.AddCRCChecksumToBuffer(test_buffer, 14, crc_checksum);
+    const uint16_t crc_checksum = crc_class.CalculateCRCChecksum(test_buffer, 2, 12);
+    crc_class.AddCRCChecksum(test_buffer, 14, crc_checksum);
 
     // Simulate receiving data
     protocol.ReceiveData();
@@ -1167,8 +1167,8 @@ void TestTransportLayerPostambleTimeoutError()
     mock_port.rx_buffer[14] = -1;  // Sets postamble byte 8 to an 'invalid' value
 
     // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
-    uint16_t crc_checksum = crc_class.CalculatePacketCRCChecksum(test_buffer, 2, 12);
-    crc_class.AddCRCChecksumToBuffer(test_buffer, 14, crc_checksum);
+    uint16_t crc_checksum = crc_class.CalculateCRCChecksum(test_buffer, 2, 12);
+    crc_class.AddCRCChecksum(test_buffer, 14, crc_checksum);
 
     // Simulate receiving data
     protocol.ReceiveData();

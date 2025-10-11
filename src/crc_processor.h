@@ -100,7 +100,7 @@ class CRCProcessor
          * @endcode
          */
         template <size_t buffer_size>
-        PolynomialType CalculatePacketCRCChecksum(
+        PolynomialType CalculateCRCChecksum(
             const uint8_t (&buffer)[buffer_size],
             const uint16_t start_index,
             const uint16_t end_index
@@ -194,7 +194,7 @@ class CRCProcessor
          * @endcode
          */
         template <size_t buffer_size>
-        uint16_t AddCRCChecksumToBuffer(
+        uint16_t AddCRCChecksum(
             uint8_t (&buffer)[buffer_size],
             const uint16_t start_index,
             const PolynomialType crc_checksum

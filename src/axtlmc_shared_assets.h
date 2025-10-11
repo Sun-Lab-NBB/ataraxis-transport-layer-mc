@@ -59,7 +59,7 @@ namespace axtlmc_shared_assets
     enum class kCRCProcessorCodes : uint8_t
     {
         kStandby                            = 51,  ///< The value used to initialize the crc_status variable
-        kCalculateCRCChecksumBufferTooSmall = 52,  ///< Checksum calculator failed, the packet exceeds buffer space
+        kCalculateCRCChecksumBufferTooSmall = 52,  ///< Checksum calculation failed, the packet exceeds buffer space
         kCRCChecksumCalculated              = 53,  ///< Checksum was successfully calculated
         kAddCRCChecksumBufferTooSmall       = 54,  ///< Not enough remaining buffer space to add checksum to buffer
         kCRCChecksumAddedToBuffer           = 55,  ///< Checksum was successfully added to the buffer

@@ -1067,7 +1067,7 @@ class TransportLayer
             // same as the encoded data length (includes overhead and delimiter bytes). The method implicitly handles
             // all necessary conversions from payload-centered to buffer-centered indexing.
             PolynomialType checksum =
-                _crc_processor.CalculatePacketCRCChecksum(_transmission_buffer, kOverheadByteIndex, packet_size);
+                _crc_processor.CalculateCRCChecksum(_transmission_buffer, kOverheadByteIndex, packet_size);
 
             // If the CRC calculator runs into an error, as indicated by its status code not matching the expected
             // success code, transfers the error status to the transfer_status and returns 0 to indicate packet
@@ -1084,7 +1084,7 @@ class TransportLayer
             // constructed in a way that always reserves enough space for the used CRC checksum, regardless of the
             // payload size.
             const uint16_t combined_size =
-                _crc_processor.AddCRCChecksumToBuffer(_transmission_buffer, packet_size + kOverheadByteIndex, checksum);
+                _crc_processor.AddCRCChecksum(_transmission_buffer, packet_size + kOverheadByteIndex, checksum);
 
             // If CRC addition fails, as indicated by the returned combined size being 0, transfers the specific error
             // status to the transfer_status and returns 0 to indicate packet construction failed.
@@ -1323,7 +1323,7 @@ class TransportLayer
             // the buffer immediately following the packet. Also starts with the overhead byte position expected to be
             // found at index 2.
             PolynomialType packet_checksum =
-                _crc_processor.CalculatePacketCRCChecksum(_reception_buffer, kOverheadByteIndex, packet_size);
+                _crc_processor.CalculateCRCChecksum(_reception_buffer, kOverheadByteIndex, packet_size);
 
             // Verifies that the CRC calculator ran without errors and returned the success status. If not, sets
             // the transfer_status to the returned crc status and returns 0 to indicate crc calculator runtime error.

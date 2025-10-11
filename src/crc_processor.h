@@ -1,12 +1,12 @@
 /**
  * @file
- * @brief This file provides the CRCProcessor class used to verify transmitted data integrity by calculating
+ * @brief Provides the CRCProcessor class used to verify transmitted data integrity by calculating
  * the Cyclic Redundancy Check (CRC) checksums for the outgoing and incoming data packets.
  *
-* @section crc_implementation Reference Implementation:
+ * @section crc_implementation Reference Implementation:
  * The implementation in this file is based on the implementation described in the original paper:
  * W. W. Peterson and D. T. Brown, "Cyclic Codes for Error Detection," in Proceedings of the IRE, vol. 49, no. 1,
- * pp. 228-235, Jan. 1961, @a doi: 10.1109/JRPROC.1961.287814.
+ * pp. 228-235, Jan. 1961, doi: 10.1109/JRPROC.1961.287814.
  */
 
 #ifndef AXTLMC_CRC_PROCESSOR_H
@@ -20,14 +20,15 @@ using namespace axtlmc_shared_assets;
 
 /**
  * @class CRCProcessor
- * @brief Provides methods for calculating Cyclic Redundancy Check (CRC) checksums and reading them from / writing them
- * to data buffers.
+ * @brief Provides methods for calculating Cyclic Redundancy Check (CRC) checksums and using them to verify the
+ * integrity of the incoming and outgoing data packets.
  *
  * @warning This class is intended to be used by the TransportLayer class and should not be used directly by the
- * end-users.
+ * end-users. It makes specific assumptions about the layout and contents of the processed data buffers that are
+ * not verified during runtime and must be enforced through the use of the TransportLayer class.
  *
  * @note Each class instance computes a CRC lookup table at initialization. The table reserves 256, 512, or 1024 bytes
- * of memory depending on the PolynomialType template parameter for the entire lifetime of the instance.
+ * of memory depending on the type of the CRC polynomial for the entire lifetime of the instance.
  *
  * @tparam PolynomialType The datatype of the CRC polynomial used by the class instance. Valid types are uint8_t,
  * uint16_t, and uint32_t.
@@ -43,7 +44,7 @@ using namespace axtlmc_shared_assets;
 template <typename PolynomialType>
 class CRCProcessor
 {
-        // Ensures that the class only accepts uint8, 16, or 32 as valid CRC types.
+        // Prevents passing unsupported data types as the PolynomialType parameter.
         static_assert(
             is_same_v<PolynomialType, uint8_t> || is_same_v<PolynomialType, uint16_t> ||
                 is_same_v<PolynomialType, uint32_t>,
@@ -51,17 +52,14 @@ class CRCProcessor
         );
 
     public:
-        /// Stores the latest runtime status of the instance.
-        uint8_t crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kStandby);
-
-        /// Stores the CRC lookup table.
+        /// Stores the lookup table used to speed up CRC computation at runtime.
         PolynomialType crc_table[256];
 
         /**
-         * @brief Generates a static CRC lookup table used by the instance to speed up future CRC checksum calculations.
+         * @brief Generates the lookup table used by the instance to speed up future CRC checksum calculations.
          *
-         * @param polynomial The polynomial to use for the generation of the CRC lookup table. Currently, only
-         * non-reversed polynomials are supported.
+         * @param polynomial The polynomial to use for the generation of the CRC lookup table. The polynomial must
+         * be standard (non-reflected / non-reversed).
          * @param initial_value The value to which the CRC checksum is initialized before calculation.
          * @param final_xor_value The value with which the CRC checksum is XORed after calculation.
          */
@@ -76,60 +74,58 @@ class CRCProcessor
         }
 
         /**
-         * @brief Calculates the CRC checksum for the specified data stored in the input buffer.
+         * @brief Calculates the checksum for the data stored in the input buffer.
          *
+         * Depending on configuration, this method either verifies the data's integrity based on the checksum included
+         * with the data or generates and writes the new checksum value to the end of the data's region.
+         *
+         * @tparam check Determines whether the method is called to verify the incoming packet's data integrity or to
+         * generate and write the CRC checksum to the outgoing packet's postamble section.
          * @tparam buffer_size The size of the input buffer.
-         * @param buffer The buffer that stores the data for which to calculate the checksum.
-         * @param start_index The index of the first data-value to be included in the checksum calculation.
-         * @param end_index The index of the first data-value to be excluded from the checksum calculation. The
-         * last value used in the calculation is found under end_index - 1.
+         * @param buffer The buffer that stores the COBS-encoded packet for which to calculate the checksum.
          *
-         * @returns PolynomialType The CRC checksum of the requested data cast to the appropriate type based on the
-         * polynomial type (uint8_t, uint16_t, uint32_t). Make sure to use the crc_status class variable to determine
-         * the success or failure status of the method based on the byte-code it is set to after the method's runtime.
-         * The crc_status can be interpreted using kCRCProcessorCodes enumeration available through shared_assets
-         * namespace.
+         * @returns uint16_t The size of the buffer occupied by the packet's data and the appended CRC checksum if
+         * the method is called to calculate the new CRC checksum. The value '1' if the method is configured to verify
+         * the packet's data integrity and the data is intact and '0' otherwise.
          *
          * Example usage:
          * @code
          * CRCProcessor<uint16_t> crc_class(0x1021, 0xFFFF, 0x0000);
          * uint8_t packet_buffer[5] = {1, 2, 3, 4, 5};
          * uint16_t start_index = 0;
-         * uint16_t packet_size = 5;
-         * uint16_t checksum = crc_class.CalculateCRCChecksum(packet_buffer, start_index, packet_size);
+         * uint16_t end_index = 5;
+         * bool check_integrity = false;
+         * uint16_t checksum = crc_class.CalculateChecksum<check_integrity>(packet_buffer, start_index, end_index);
          * @endcode
          */
-        template <size_t buffer_size>
-        PolynomialType CalculateCRCChecksum(
-            const uint8_t (&buffer)[buffer_size],
-            const uint16_t start_index,
-            const uint16_t end_index
+        template <bool check, size_t buffer_size>
+        uint16_t CalculateChecksum(
+            uint8_t (&buffer)[buffer_size]
         )
         {
-            // Ensures that the byte-reading operation will not overflow the buffer or read past the allowed buffer
-            // size. Note, uses the start_index to offset the buffer_size before comparing it to the packet_size.
-            if (static_cast<uint16_t>(buffer_size) - start_index < end_index)
-            {
-                crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCalculateCRCChecksumBufferTooSmall);
-
-                // NOTE, unlike most other methods, ANY returned value of this method is potentially valid, so 0 here is
-                // just a placeholder. If the method returns 0, this DOES NOT mean the method failed its runtime.
-                // That can only be determined by using the crc_status.
-                return 0;
-            }
-
-            // Initializes the checksum to the initial value of the polynomial that was used to generate the crc table.
-            // Also uses the template polynomial type to automatically scale the checksum to the correct size.
+            // Initializes the checksum to the initial value of the polynomial that was used to generate the crc table
             PolynomialType crc_checksum = kInitialValue;
 
+            // Statically sets the start index to the position of the overhead byte. This specializes this function to
+            // work exclusively with the buffers defined in this library, similar to how COBSProcessor's methods are
+            // implemented.
+            constexpr uint16_t start_index = kBufferLayout::kOverheadByteIndex;
+
+            // When the function is called in the data checking code, the processed data stretch needs to include the
+            // CRC checksum postamble. Otherwise, the processed data needs to include just the packet itself.
+            constexpr uint16_t adjustment = check ? kCRCByteLength : 0;
+
+            // Uses the start index and the packet size to determine the stretch of data-values to process
+            const uint16_t end_index = start_index + buffer[kBufferLayout::kPayloadSizeIndex] + 2 + adjustment;
+
             // Loops over each byte inside the packet and iteratively calculates CRC checksum for the packet
-            for (uint16_t i = start_index; i < start_index + end_index; i++)
+            for (uint16_t i = start_index; i < end_index; i++)
             {
                 // Saves the data byte being processed into a separate variable
                 uint8_t data_byte = buffer[i];
 
-                // Calculates the index to retrieve from CRC table. To do so, combines the high byte of the CRC checksum
-                // with the (possibly) modified (corrupted) data_byte using bitwise XOR.
+                // Calculates the index to retrieve from the CRC table. To do so, combines the high byte of the CRC
+                // checksum with the (possibly) modified (corrupted) data_byte using bitwise XOR.
                 uint8_t table_index = crc_checksum >> 8 * (kCRCByteLength - 1) ^ data_byte;
 
                 // Extracts the byte-specific CRC value from the table using the result of the operation above. The
@@ -138,88 +134,34 @@ class CRCProcessor
                 crc_checksum = crc_checksum << 8 ^ crc_table[table_index];
             }
 
-            // The Final XOR operation may or may not be used (depending on the polynomial). The default polynomial
-            // 0x1021 has it set to 0x0000 (0), so it is actually not used. Other polynomials may require this step, so
-            // it is kept here for compatibility reasons. The exact algorithmic purpose of the XOR depends on the
-            // specific polynomial used.
+            // The Final XOR operation may or may not be used (depending on the polynomial). The exact algorithmic
+            // purpose of the XOR depends on the specific polynomial used.
             crc_checksum ^= kFinalXORValue;
 
-            // Sets the status to indicate runtime success and returns calculated checksum to the caller.
-            crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumCalculated);
-            return crc_checksum;
-        }
-
-        /**
-         * @brief Adds the input crc_checksum to the input buffer, at a position specified by the start_index.
-         *
-         * This method converts multi-byte CRC checksums into multiple bytes, starting with the most significant byte,
-         * and iteratively overwrites the buffer bytes with CRC bytes starting with the start_index.
-         *
-         * @note The method automatically scales with the byte-size of the PolynomialType that was used as the template
-         * argument during class instantiation. As such, make sure that the input checksum uses the same polynomial
-         * (and, by extension, the crc checksum) datatype, otherwise unexpected behavior and / or data corruption may
-         * occur.
-         *
-         * @attention This method feeds the data starting with the most significant byte of the multi-byte CRC checksum
-         * first. When reading the data from buffer, make sure to use the companion ReadCRCChecksumFromBuffer() to
-         * retrieve the data in the appropriate order. Otherwise, the read CRC checksum will be incorrect.
-         *
-         * @tparam buffer_size The size of the input buffer. This value is used to verify that the CRC checksum will fit
-         * inside the buffer if it is written starting at the start_index. This guards against undefined behavior and
-         * potential data corruption.
-         * @param buffer The buffer to which the CRC should be appended. Generally, this should either be the
-         * packet-filled payload buffer or a postamble buffer to be sent right after the packet buffer, depending on
-         * the particular packet anatomy used in your transmission protocol.
-         * @param start_index The index inside the buffer with which to start writing the CRC checksum. Specifically,
-         * the most significant checksum byte will be written to that index and all lower bytes will be trailed behind,
-         * until the entire checksum is written.
-         * @param crc_checksum The CRC checksum value to be appended to the buffer. The method automatically sets the
-         * input type according to class instance PolynomialType template argument (e.g., if the class was initialized
-         * with uint8_t PolynomialType, the input crc_checksum will also be cast to uint8_t).
-         *
-         * @returns uint16_t The size of the buffer occupied by the preceding data and the appended CRC checksum.
-         * Ignores any data that may be found after the appended CRC checksum, the returned size will always be equal
-         * to the start_index + crc_checksum byte-size. Returns 0 if method runtime fails to indicate no data has been
-         * added to the buffer. Use crc_status to determine the particular error that led to runtime failure
-         * (or success code if the method succeeds). The status byte-codes can be interpreted using kCRCProcessorCodes
-         * enumeration available through shared_assets namespace.
-         *
-         * Example usage:
-         * @code
-         * CRCProcessor<uint16_t> crc_class(0x1021, 0xFFFF, 0x0000);
-         * uint8_t postamble_buffer[2];
-         * uint16_t start_index = 0;
-         * uint16_t crc_checksum = 12345; // Non-real example value
-         * uint16_t postamble_size = crc_class.AddCRCChecksumToBuffer(postamble_buffer, start_index, crc_checksum);
-         * @endcode
-         */
-        template <size_t buffer_size>
-        uint16_t AddCRCChecksum(
-            uint8_t (&buffer)[buffer_size],
-            const uint16_t start_index,
-            const PolynomialType crc_checksum
-        )
-        {
-            // Ensures there is enough space in the buffer for the CRC to be added at the start index.
-            if (kCRCByteLength > static_cast<uint16_t>(buffer_size) - start_index)
+            // If the method is called to generate the checksum for the packet, adds the computed checksum to the buffer
+            // immediately after the processed packet. Note; the checksum is always appended to the end of the data
+            // packet, overwriting any already existing data.
+            if (!check)
             {
-                crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kAddCRCChecksumBufferTooSmall);
-                return 0;
+                // Appends the CRC checksum to the buffer, starting with the most significant byte (loops over each
+                // byte and iteratively adds it to the buffer).
+                for (uint16_t i = 0; i < kCRCByteLength; ++i)
+                {
+                    // Extracts the byte from the checksum and inserts it into the buffer. Most of this instruction
+                    // controls which byte making up the CRC checksum is processed by each iteration of the loop
+                    buffer[end_index + i] = crc_checksum >> 8 * (kCRCByteLength - i - 1) & 0xFF;
+                }
+
+                // Returns the total size of the data stored in the buffer, including the newly appended CRC checksum.
+                return end_index + kCRCByteLength;
             }
 
-            // Appends the CRC checksum to the buffer, starting with the most significant byte (loops over each byte and
-            // iteratively adds it to the buffer).
-            for (uint16_t i = 0; i < kCRCByteLength; ++i)
-            {
-                // Extracts the byte from the checksum and inserts it into the buffer. Most of this instruction controls
-                // which byte making up the CRC checksum is processed by each iteration of the loop
-                buffer[start_index + i] = crc_checksum >> 8 * (kCRCByteLength - i - 1) & 0xFF;
-            }
+            // If the method is called to verify an existing checksum and running the CRC calculation on the packet
+            // and its checksum postamble section returns 0, the data is intact. In this case, returns 1.
+            if (crc_checksum == 0) return 1;
 
-            // Returns the new size of the buffer after appending the CRC checksum to it and also sets the crc_status
-            // appropriately.
-            crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumAddedToBuffer);
-            return start_index + kCRCByteLength;
+            // Otherwise, the data is corrupted. Returns 0.
+            return 0;
         }
 
     private:

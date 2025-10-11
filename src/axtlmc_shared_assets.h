@@ -28,72 +28,29 @@
 namespace axtlmc_shared_assets
 {
     /**
-     * @enum kCOBSProcessorCodes
-     * @brief Defines the status codes used by the COBSProcessor class.
-     *
-     * @note All codes in this enumeration must use values between 11 and 50.
+     * @enum kTransportStatusCodes
+     * @brief Defines the codes used by the TransportLayer class to indicate the status of all supported data
+     * manipulations.
      */
-    enum class kCOBSProcessorCodes : uint8_t
+    enum class kTransportStatusCodes : uint8_t
     {
-        kStandby                       = 11,  ///< The value used to initialize the cobs_status variable
-        kEncoderTooSmallPayloadSize    = 12,  ///< Encoder failed to encode payload because its size is too small
-        kEncoderTooLargePayloadSize    = 13,  ///< Encoder failed to encode payload because its size is too large
-        kEncoderPacketLargerThanBuffer = 14,  ///< Encoded payload buffer is too small to accommodate the packet
-        kPayloadAlreadyEncoded         = 15,  ///< Cannot encode payload as it is already encoded (overhead value != 0)
-        kPayloadEncoded                = 16,  ///< Payload was successfully encoded into a transmittable packet
-        kDecoderTooSmallPacketSize     = 17,  ///< Decoder failed to decode the packet because its size is too small
-        kDecoderTooLargePacketSize     = 18,  ///< Decoder failed to decode the packet because its size is too large
-        kDecoderPacketLargerThanBuffer = 19,  ///< Packet size to be decoded is larger than the storage buffer size
-        kDecoderUnableToFindDelimiter  = 20,  ///< Decoder failed to find the delimiter at the end of the packet
-        kDecoderDelimiterFoundTooEarly = 21,  ///< Decoder found a delimiter before reaching the end of the packet
-        kPacketAlreadyDecoded          = 22,  ///< Cannot decode the packet as it is already decoded (overhead == 0)
-        kPayloadDecoded                = 23,  ///< Payload was successfully decoded from the received packet
-    };
-
-    /**
-     * @enum kCRCProcessorCodes
-     * @brief Defines the status codes used by the CRCProcessor class.
-     *
-     * @note All codes in this enumeration must use values between 51 and 100.
-     */
-    enum class kCRCProcessorCodes : uint8_t
-    {
-        kStandby                            = 51,  ///< The value used to initialize the crc_status variable
-        kCalculateCRCChecksumBufferTooSmall = 52,  ///< Checksum calculation failed, the packet exceeds buffer space
-        kCRCChecksumCalculated              = 53,  ///< Checksum was successfully calculated
-        kAddCRCChecksumBufferTooSmall       = 54,  ///< Not enough remaining buffer space to add checksum to buffer
-        kCRCChecksumAddedToBuffer           = 55,  ///< Checksum was successfully added to the buffer
-    };
-
-    /**
-     * @enum kTransportLayerCodes
-     * @brief Defines the status codes used by the TransportLayer class.
-     *
-     * @note All codes in this enumeration must use values between 101 and 150.
-     */
-    enum class kTransportLayerCodes : uint8_t
-    {
-        kStandby                     = 101,  ///< The default value used to initialize the transfer_status variable
-        kPacketConstructed           = 102,  ///< Packet was successfully constructed
-        kPacketSent                  = 103,  ///< Packet was successfully transmitted
-        kPacketStartByteFound        = 104,  ///< Packet start byte was found
-        kPacketStartByteNotFound     = 105,  ///< Packet start byte was not found in the incoming stream
-        kPayloadSizeByteFound        = 106,  ///< Payload size byte was found
-        kPayloadSizeByteNotFound     = 107,  ///< Payload size byte was not found in the incoming stream
-        kInvalidPayloadSize          = 108,  ///< Received payload size is not valid
-        kPacketTimeoutError          = 109,  ///< Packet parsing failed due to stalling (reception timeout)
-        kNoBytesToParseFromBuffer    = 110,  ///< Stream class reception buffer had no packet bytes to parse
-        kPacketParsed                = 111,  ///< Packet was successfully parsed
-        kCRCCheckFailed              = 112,  ///< CRC check failed, the incoming packet is corrupted
-        kPacketValidated             = 113,  ///< Packet was successfully validated
-        kPacketReceived              = 114,  ///< Packet was successfully received
-        kWriteObjectBufferError      = 115,  ///< Not enough space in the buffer payload region to write the object
-        kObjectWrittenToBuffer       = 116,  ///< The object has been written to the buffer
-        kReadObjectBufferError       = 117,  ///< Not enough bytes in the buffer payload region to read the object from
-        kObjectReadFromBuffer        = 118,  ///< The object has been read from the buffer
-        kDelimiterNotFoundError      = 119,  ///< Delimiter byte was not found at the end of the packet
-        kDelimiterFoundTooEarlyError = 120,  ///< Delimiter byte was found before reaching the end of the packet
-        kPostambleTimeoutError       = 121,  ///< The Postamble was not received within the specified time frame
+        kStandby                     = 11,  ///< The value used to initialize the status tracker variable
+        kDecodingFailed              = 12,  ///< Unable to decode the payload from the received packet
+        kPacketSent                  = 13,  ///< Packet was successfully transmitted
+        kPayloadSizeByteNotFound     = 14,  ///< Payload size byte was not found in the incoming stream
+        kInvalidPayloadSize          = 15,  ///< Received payload size is not valid
+        kPacketTimeoutError          = 16,  ///< Packet parsing failed due to stalling (reception timeout)
+        kNoBytesToParse              = 17,  ///< Stream class reception buffer had no packet bytes to parse
+        kPacketParsed                = 18,  ///< Packet was successfully parsed
+        kCRCCheckFailed              = 19,  ///< CRC check failed, the incoming packet is corrupted
+        kPacketReceived              = 20,  ///< Packet was successfully received
+        kWriteObjectBufferError      = 21,  ///< Not enough space in the buffer payload region to write the object
+        kObjectWrittenToBuffer       = 22,  ///< The object has been written to the buffer
+        kReadObjectBufferError       = 23,  ///< Not enough bytes in the buffer payload region to read the object from
+        kObjectReadFromBuffer        = 24,  ///< The object has been read from the buffer
+        kDelimiterNotFoundError      = 25,  ///< Delimiter byte was not found at the end of the packet
+        kDelimiterFoundTooEarlyError = 26,  ///< Delimiter byte was found before reaching the end of the packet
+        kPostambleTimeoutError       = 27,  ///< The Postamble was not received within the specified time frame
     };
 
     /**
@@ -111,6 +68,7 @@ namespace axtlmc_shared_assets
             static constexpr uint8_t kMinimumPacketSize  = 3;    ///< 1 payload byte, overhead, and delimiter
             static constexpr uint16_t kMaximumPacketSize = 256;  ///< 254 payload bytes, overhead, and delimiter
             static constexpr uint8_t kDelimiterByte      = 0;    ///< The value used as the encoded packet delimiter
+            static constexpr uint8_t kStartByte          = 129;  ///< The value used as the packet start byte
             static constexpr uint8_t kStartByteIndex     = 0;    ///< The index of the start byte value
             static constexpr uint8_t kPayloadSizeIndex   = 1;    ///< The index of the payload size value
             static constexpr uint8_t kOverheadByteIndex  = 2;    ///< The index of the overhead byte value

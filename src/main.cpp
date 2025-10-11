@@ -10,7 +10,7 @@
 // Includes the core dependency for all Teensyduino projects.
 #include <Arduino.h>
 
-// Includes the TransportLayer header to access class API.
+// Includes the TransportLayer header to access user-facing library API.
 #include <transport_layer.h>
 
 // Instantiates a new TransportLayer object. Most template and constructor arguments should automatically scale with
@@ -63,7 +63,7 @@ void loop()
             next_index = 0;  // Resets the index to 0.
             next_index = tl_class.WriteData(test_scalar, next_index);
             next_index = tl_class.WriteData(test_array, next_index);
-            tl_class.WriteData(test_struct, next_index);  // Once again, the index after last object is not saved.
+            tl_class.WriteData(test_struct, next_index);  // Once again, the index after the last object is not saved.
 
             // Packages and sends the contents of the transmission buffer that were written above to the PC.
             tl_class.SendData();  // This also returns a boolean status that we discard for this example.

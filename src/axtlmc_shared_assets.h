@@ -63,8 +63,6 @@ namespace axtlmc_shared_assets
         kCRCChecksumCalculated              = 53,  ///< Checksum was successfully calculated
         kAddCRCChecksumBufferTooSmall       = 54,  ///< Not enough remaining buffer space to add checksum to buffer
         kCRCChecksumAddedToBuffer           = 55,  ///< Checksum was successfully added to the buffer
-        kReadCRCChecksumBufferTooSmall      = 56,  ///< The remaining buffer space is too small to store the checksum
-        kCRCChecksumReadFromBuffer          = 57,  ///< Checksum was successfully read from the buffer
     };
 
     /**

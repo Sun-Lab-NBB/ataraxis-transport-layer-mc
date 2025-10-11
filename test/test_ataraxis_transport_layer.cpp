@@ -381,10 +381,9 @@ void TestCRCProcessorGenerateTable_CRC32()
     TEST_ASSERT_EQUAL_HEX32_ARRAY(test_crc_table, crc_processor.crc_table, 256);
 }
 
-// Tests CRCProcessor class CalculatePacketCRCChecksum(), AddCRCChecksumToBuffer() and ReadCRCChecksumFromBuffer()
-// methods. Relies on the TestCRCProcessorGenerateTable functions to verify lookup table generation for all supported
-// CRCs before running this test. All tests here are calibrated for 16-bit 0x1021 polynomial and will not work for
-// any other polynomial.
+// Tests CRCProcessor class CalculatePacketCRCChecksum() and AddCRCChecksumToBuffer() methods. Relies on the
+// TestCRCProcessorGenerateTable functions to verify lookup table generation for all supported CRCs before running
+// this test. All tests here are calibrated for 16-bit 0x1021 polynomial and will not work for any other polynomial.
 void TestCRCProcessor()
 {
     // Generates the test buffer of size 8 with an example packet of size 6 and two placeholder values
@@ -421,20 +420,9 @@ void TestCRCProcessor()
     // reception for errors.
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumCalculated), crc_processor.crc_status);
     TEST_ASSERT_EQUAL_UINT16(0, result);
-
-    // Extracts the CRC checksum from the buffer
-    const uint16_t extracted_checksum = crc_processor.ReadCRCChecksumFromBuffer(test_packet, 6);
-
-    // Verifies that the checksum is correctly extracted from the buffer using the expected value check and status check
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumReadFromBuffer),
-        crc_processor.crc_status
-    );
-    TEST_ASSERT_EQUAL_HEX16(0xF54E, extracted_checksum);
 }
 
-// Tests error handling for CalculatePacketCRCChecksum(), AddCRCChecksumToBuffer() and ReadCRCChecksumFromBuffer()
-// of CRCProcessor class.
+// Tests error handling for CalculatePacketCRCChecksum() and AddCRCChecksumToBuffer() CRCProcessor methods.
 void TestCRCProcessorErrors()
 {
     // Generates a small test buffer
@@ -463,15 +451,6 @@ void TestCRCProcessorErrors()
     uint16_t result = crc_processor.AddCRCChecksumToBuffer(test_buffer, 4, checksum);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kCRCProcessorCodes::kAddCRCChecksumBufferTooSmall),
-        crc_processor.crc_status
-    );
-    TEST_ASSERT_EQUAL_UINT16(0, result);
-
-    // Same as above, but for the GetCRCChecksumFromBuffer function (same idea, index 5 is needed, but is not available
-    // to read the CRC from it).
-    result = crc_processor.ReadCRCChecksumFromBuffer(test_buffer, 4);
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(kCRCProcessorCodes::kReadCRCChecksumBufferTooSmall),
         crc_processor.crc_status
     );
     TEST_ASSERT_EQUAL_UINT16(0, result);
@@ -1063,6 +1042,7 @@ void TestTransportLayerDataTransmissionErrors()
 
     // Payload too small
     mock_port.rx_buffer[11] = 4;
+    protocol.ReceiveData();
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportLayerCodes::kInvalidPayloadSize), protocol.transfer_status);
     mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 

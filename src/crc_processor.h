@@ -76,38 +76,13 @@ class CRCProcessor
         }
 
         /**
-         * @brief Uses class-instance-specific CRC lookup table to calculate the CRC checksum for the specified stretch
-         * of data inside the input buffer.
+         * @brief Calculates the CRC checksum for the specified data stored in the input buffer.
          *
-         * This method loops over packet_size bytes starting with start_index inside the buffer and iteratively
-         * computes a CRC checksum for the data.
-         *
-         * The method is primarily intended to be used on the buffers of the TransportLayer class and was
-         * constructed to work with their specific layout. However, the method is implemented in a way that it can be
-         * flexibly configured for any buffer layout.
-         *
-         * @note Currently, only supports polynomials that do not require bit-reversal for inputs and outputs.
-         *
-         * @attention The method returns the generated CRC checksum as the type specified by the PolynomialType template
-         * argument of the class. As such, it automatically scales with each supported polynomial type. Make sure that
-         * the caller uses the appropriate type (or auto) to handle the returned checksum value.
-         *
-         * @warning Any value returned by this method is potentially a valid value. To determine if the method runtime
-         * was successful or failed, use crc_status variable of the class instance. Unlike for many other methods of
-         * this library, the returned value is not meaningful until it is verified using the status code.
-         *
-         * @tparam buffer_size The size of the input buffer. This value is used to verify that the specified packet_size
-         * fits inside the buffer and will not lead to out-of-bounds access. This guards against undefined behavior and
-         * potential data corruption.
-         * @param buffer The buffer that stores the data to be checksummed. This is intended to be a well-formed and
-         * COBS-encoded packet to be sent to the PC using TransportLayer class. That said, the method will
-         * checksum any valid byte-array.
-         * @param start_index The index that points to the first byte-value of the portion of the data inside the input
-         * buffer to be checksummed (where to start check-summing from). This is helpful to limit the checksum
-         * calculation if the buffer contains additional data prior to the portion to be checksummed.
-         * @param packet_size The byte-size (stretch) of the data to be checksummed. This method works from start_index
-         * (see above) inside the input buffer up to the last index defined by this value (packet_size-1). This is
-         * helpful if the buffer contains additional data after the data portion to be checksummed.
+         * @tparam buffer_size The size of the input buffer.
+         * @param buffer The buffer that stores the data for which to calculate the checksum.
+         * @param start_index The index of the first data-value to be included in the checksum calculation.
+         * @param end_index The index of the first data-value to be excluded from the checksum calculation. The
+         * last value used in the calculation is found under end_index - 1.
          *
          * @returns PolynomialType The CRC checksum of the requested data cast to the appropriate type based on the
          * polynomial type (uint8_t, uint16_t, uint32_t). Make sure to use the crc_status class variable to determine
@@ -128,12 +103,12 @@ class CRCProcessor
         PolynomialType CalculatePacketCRCChecksum(
             const uint8_t (&buffer)[buffer_size],
             const uint16_t start_index,
-            const uint16_t packet_size
+            const uint16_t end_index
         )
         {
             // Ensures that the byte-reading operation will not overflow the buffer or read past the allowed buffer
             // size. Note, uses the start_index to offset the buffer_size before comparing it to the packet_size.
-            if (static_cast<uint16_t>(buffer_size) - start_index < packet_size)
+            if (static_cast<uint16_t>(buffer_size) - start_index < end_index)
             {
                 crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCalculateCRCChecksumBufferTooSmall);
 
@@ -148,7 +123,7 @@ class CRCProcessor
             PolynomialType crc_checksum = kInitialValue;
 
             // Loops over each byte inside the packet and iteratively calculates CRC checksum for the packet
-            for (uint16_t i = start_index; i < start_index + packet_size; i++)
+            for (uint16_t i = start_index; i < start_index + end_index; i++)
             {
                 // Saves the data byte being processed into a separate variable
                 uint8_t data_byte = buffer[i];
@@ -245,76 +220,6 @@ class CRCProcessor
             // appropriately.
             crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumAddedToBuffer);
             return start_index + kCRCByteLength;
-        }
-
-        /**
-         * @brief Reads the CRC checksum from the input buffer, starting at the start_index.
-         *
-         * This method loops over the input buffer starting at the stat_index index and extracts and combines the
-         * required number of bytes to generate the appropriately sized CRC checksum.
-         *
-         * @warning Any value returned by this method is potentially a valid value. To determine if the method runtime
-         * was successful or failed, use crc_status variable of the class instance. Unlike for many other methods of
-         * this library, the returned value is not meaningful until it is verified using the status code.
-         *
-         * @note The method automatically scales with the byte-size of the PolynomialType that was used as the template
-         * argument during class instantiation. As such, make sure that the caller uses appropriately datatyped variable
-         * to save the returned crc checksum. Otherwise, unexpected behavior and / or data corruption may occur.
-         *
-         * @attention This method expects the CRC checksum data stretch to start with the most significant byte of the
-         * multi-byte CRC checksum first. When writing the data to buffer, make sure to use the AddCRCChecksumToBuffer()
-         * method to write the data in the appropriate order. Otherwise, the read CRC checksum will be incorrect.
-         *
-         * @tparam buffer_size The size of the input buffer. This value is used to verify that the there are enough
-         * bytes available from the start_index to the end of the buffer to accommodate the expected CRC checksum size
-         * to be read. This guards against undefined behavior and potential data corruption that would result from
-         * attempting to retrieve data outside the buffer boundaries.
-         * @param buffer The buffer from which the CRC checksum needs to be extracted. Generally, this should either be
-         * the packet buffer or a postamble buffer sent right after the packet buffer, depending on the particular
-         * packet anatomy used in your transmission protocol.
-         * @param start_index The position inside the buffer to start reading CRC bytes from. The first CRC checksum
-         * byte is read from the start_index, and the remaining bytes are extracted iteratively moving toward the end
-         * of the buffer.
-         *
-         * @returns PolynomialType The CRC checksum value cast to the type specified by the class instance
-         * PolynomialType template argument (so if the class was initialized with uint8_t PolynomialType, the returned
-         * CRC checksum will also use uint8_t, etc.). The returned value itself is not meaningful until it is verified
-         * using the status code available through the crc_status variable of the class. The returned status byte-code
-         * can be interpreted using the kCRCProcessorCodes enumeration available through shared_assets namespace.
-         *
-         * Example usage:
-         * @code
-         * CRCProcessor<uint16_t> crc_class(0x1021, 0xFFFF, 0x0000);
-         * uint8_t postamble_buffer[2] = {123, 65}; // Non-real example value encoded by two bytes!
-         * uint16_t start_index = 0;
-         * uint16_t crc_checksum = crc_class.AddCRCChecksumToBuffer(postamble_buffer, start_index);
-         * @endcode
-         */
-        template <size_t buffer_size>
-        PolynomialType ReadCRCChecksumFromBuffer(const uint8_t (&buffer)[buffer_size], const uint16_t start_index)
-        {
-            // Ensures the CRC checksum to read is fully within the bounds of the buffer
-            if (kCRCByteLength > static_cast<uint16_t>(buffer_size) - start_index)
-            {
-                crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kReadCRCChecksumBufferTooSmall);
-                // Note. Similar to checksum calculator method, 0 is a perfectly valid number. The only way to
-                // determine the runtime status of the method is to use the crc_status byte-code.
-                return 0;
-            }
-
-            // Reconstructs the CRC checksum from the buffer
-            PolynomialType extracted_crc = 0;  // Initializes to the type specified by the crc polynomial type
-            for (uint16_t i = 0; i < kCRCByteLength; ++i)
-            {
-                // Constructs the CRC checksum from the buffer, starting from the most significant byte and moving
-                // towards the least significant byte. This matches the process of how it was appended to the buffer
-                // by the AddCRCChecksumToBuffer() or an equivalent PC method.
-                extracted_crc |= static_cast<PolynomialType>(buffer[start_index + i]) << 8 * (kCRCByteLength - i - 1);
-            }
-
-            // Returns the extracted crc to caller and sets the crc_status appropriately.
-            crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumReadFromBuffer);
-            return static_cast<PolynomialType>(extracted_crc);
         }
 
     private:

@@ -1,56 +1,12 @@
 /**
  * @file
- * @brief The header file for the CRCProcessor class, which is used to verify transmitted data integrity by calculating
- * the Cyclic Redundancy Check (CRC) Checksum for the outgoing and incoming data packets.
+ * @brief This file provides the CRCProcessor class used to verify transmitted data integrity by calculating
+ * the Cyclic Redundancy Check (CRC) checksums for the outgoing and incoming data packets.
  *
- * @section crc_description Description:
- * Cyclic Redundancy Check (CRC) is a widely used algorithm for verifying data integrity that is based on the residual
- * obtained from dividing the byte-serialized data array by a polynomial. A well-known property of the CRC algorithm is
- * that running the CRC calculation on a packet that contains the CRC checksum at the end always returns 0 as the CRC
- * checksum.
- *
- * For more information about CRC see this original paper:
+* @section crc_implementation Reference Implementation:
+ * The implementation in this file is based on the implementation described in the original paper:
  * W. W. Peterson and D. T. Brown, "Cyclic Codes for Error Detection," in Proceedings of the IRE, vol. 49, no. 1,
  * pp. 228-235, Jan. 1961, @a doi: 10.1109/JRPROC.1961.287814.
- *
- * This file contains four major methods packaged into the COBSProcessor class namespace:
- * - CalculatePacketCRCChecksum(): A CRC checksum calculator that uses a class-specific CRC lookup table generated
- * during class instantiation to speed up it's runtime.
- * - AddCRCChecksumToBuffer(): A packager method that converts an input CRC checksum into bytes and adds them to the
- * specified location of the input buffer.
- * - ReadCRCChecksumFromBuffer(): An unpackager method that extracts a CRC checksum from the specified location of the
- * input buffer and returns it as an appropriately sized unsigned integer.
- * - GenerateCRCTable(): A private method automatically called during class instantiation that calculates a constant
- * CRC-lookup table used to speed up checksum calculation at the cost of reserving a certain amount of RAM.
- * - A number of other minor utility methods used by the major method listed above.
- *
- * @attention This class is implemented as a template, and many methods adapt to the PolynomialType argument used during
- * class instantiation. See developer notes below for more information.
- *
- * @section crc_developer_notes Developer Notes:
- * This class is implemented as a template and all methods of the class scale with the CRC polynomial type used during
- * instantiation. This allows using the same class for all common polynomials used for CRC checksum calculations of
- * types uint8_t, uint16_t, and uint32_t. This is part of a boarder effort to make the library flexible enough to
- * be used on a wide variety of platforms.
- *
- * @note 64-bit+ polynomials are currently not supported, largely due to their niche use case and issues
- * with using the existing testing environment with 64-bit variables. That said, the code is designed in a way that
- * would naturally scale to work with 64-bit+ polynomials if the static instantiation guard is modified to allow this.
- * Currently, there are no plans to offer official support for this functionality though.
- *
- * Due to the complex nature of class definition, the class can only be instantiated by an instantiation-time
- * assignment:
- * @code
- * CRCProcessor<uint16_t> crc_class(0x1021, 0xFFFF, 0x0000);
- * @endcode
- *
- * It is important to use the same template type argument as used by the polynomial (first argument of the class
- * constructor), as the class automatically scales all constructor arguments to the declared polynomial type template
- * parameter.
- *
- * @section crc_dependencies Dependencies:
- * - Arduino.h for Arduino platform methods and macros and cross-compatibility with Arduino IDE (to an extent).
- * - shared_assets.h for shared library assets (mostly status byte-codes for library classes).
  */
 
 #ifndef AXTLMC_CRC_PROCESSOR_H
@@ -60,27 +16,21 @@
 #include <Arduino.h>
 #include "axtlmc_shared_assets.h"
 
+using namespace axtlmc_shared_assets;
+
 /**
  * @class CRCProcessor
- * @brief Generates a Circular Redundancy Check table during initialization and provides methods that use this table to
- * calculate the CRC checksum and add / read this checksum from storage buffers for transmitted data packets.
+ * @brief Provides methods for calculating Cyclic Redundancy Check (CRC) checksums and reading them from / writing them
+ * to data buffers.
  *
- * @warning All methods of this class scale with the PolynomialType template argument of the class. Make sure that this
- * argument matches the used polynomial type during class instantiation to avoid unexpected behavior.
+ * @warning This class is intended to be used by the TransportLayer class and should not be used directly by the
+ * end-users.
  *
- * @note Each instance of this class computes a constant CRC table during initialization and subsequently uses it to
- * generate CRC checksum values for input data byte-streams. The table reserves either 256, 512, or 1024 bytes of
- * memory depending on the PolynomialType template parameter. It is fairly uncommon to use more than a single
- * instance of this class for memory-constrained platforms, such as microcontrollers.
+ * @note Each class instance computes a CRC lookup table at initialization. The table reserves 256, 512, or 1024 bytes
+ * of memory depending on the PolynomialType template parameter for the entire lifetime of the instance.
  *
- * @attention This class makes certain assumptions about the layout of the input buffers and, additionally, is very
- * sensitive to the correct constructor configuration (due to the high versatility of CRC-table generation method). Due
- * to these reasons, this class is intended to be used exclusively by the TransportLayer class, which
- * appropriately handles all assumptions and configuration requirements.
- *
- * @tparam PolynomialType The datatype of the CRC polynomial to be used by the class. Valid types are uint8_t, uint16_t,
- * and uint32_t. The class contains a compile-time guard against any other input datatype. Overall, this allows using
- * this class with the vast majority of available CRC checksum polynomials, significantly increasing class versatility.
+ * @tparam PolynomialType The datatype of the CRC polynomial used by the class instance. Valid types are uint8_t,
+ * uint16_t, and uint32_t.
  *
  * Example instantiation:
  * @code
@@ -93,44 +43,27 @@
 template <typename PolynomialType>
 class CRCProcessor
 {
-        // Ensures that the class only accepts uint8, 16, or 32 as valid CRC types, as no other type can be used to
-        // store a CRC polynomial at the time of writing. While 64-bit polynomials are also available, they are fairly
-        // uncommon and most likely not necessary for most use cases of this library. As such, at the time, there are
-        // no plans to offer 64-bit polynomial support.
+        // Ensures that the class only accepts uint8, 16, or 32 as valid CRC types.
         static_assert(
-            axtlmc_shared_assets::is_same_v<PolynomialType, uint8_t> ||
-                axtlmc_shared_assets::is_same_v<PolynomialType, uint16_t> ||
-                axtlmc_shared_assets::is_same_v<PolynomialType, uint32_t>,
+            is_same_v<PolynomialType, uint8_t> || is_same_v<PolynomialType, uint16_t> ||
+                is_same_v<PolynomialType, uint32_t>,
             "CRCProcessor class template PolynomialType argument must be either uint8_t, uint16_t, or uint32_t."
         );
 
     public:
-        /// Stores the latest runtime status of the CRCProcessor. This variable is primarily designed to communicate the
-        /// specific errors encountered during crc checksum calculation or reading / writing crc checksum to buffers. It
-        /// uses byte-codes taken from the kCRCProcessorCodes enumeration (available through shared_assets
-        /// namespace). Use the communicated status to precisely determine the runtime status of any class method.
-        uint8_t crc_status = static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kStandby);
+        /// Stores the latest runtime status of the instance.
+        uint8_t crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kStandby);
 
-        /// The array that stores the CRC lookup table. The lookup table is used to speed up CRC checksum calculation by
-        /// pre-computing the checksum value for each possible byte-value (from 0 through 255: 256 values total). The
-        /// table is filled automatically during class instantiation and reserves 256, 512, or 1024 bytes of RAM for the
-        /// entire lifetime of the class, depending on the PolynomialType template parameter.
+        /// Stores the CRC lookup table.
         PolynomialType crc_table[256];
 
         /**
-         * @brief Instantiates CRCProcessor class and generates a static CRC lookup table to be used by the class
-         * instance to speed up CRC checksum calculations.
+         * @brief Generates a static CRC lookup table used by the instance to speed up future CRC checksum calculations.
          *
-         * @attention Uses the class template PolynomialType argument to determine the type of the CRC polynomial to be
-         * used. Scales most expected arguments to match the declared PolynomialType template parameter.
-         *
-         * @param polynomial The polynomial to use for the generation of the CRC lookup table. Can be provided as an
-         * appropriately sized HEX number (e.g., 0x1021). Note, currently only non-reversed polynomials are supported.
-         * @param initial_value The initial value to which the CRC checksum variable is initialized during calculation.
-         * This value is based on the polynomial parameter. Can be provided as an appropriately sized HEX number
-         * (e.g., 0xFFFF).
-         * @param final_xor_value The final XOR value to be applied to the calculated CRC checksum value. This value is
-         * based on the polynomial parameter. Can be provided as an appropriately sized HEX number (e.g., 0x0000).
+         * @param polynomial The polynomial to use for the generation of the CRC lookup table. Currently, only
+         * non-reversed polynomials are supported.
+         * @param initial_value The value to which the CRC checksum is initialized before calculation.
+         * @param final_xor_value The value with which the CRC checksum is XORed after calculation.
          */
         CRCProcessor(
             const PolynomialType polynomial,
@@ -202,8 +135,7 @@ class CRCProcessor
             // size. Note, uses the start_index to offset the buffer_size before comparing it to the packet_size.
             if (static_cast<uint16_t>(buffer_size) - start_index < packet_size)
             {
-                crc_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kCalculateCRCChecksumBufferTooSmall);
+                crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCalculateCRCChecksumBufferTooSmall);
 
                 // NOTE, unlike most other methods, ANY returned value of this method is potentially valid, so 0 here is
                 // just a placeholder. If the method returns 0, this DOES NOT mean the method failed its runtime.
@@ -238,7 +170,7 @@ class CRCProcessor
             crc_checksum ^= kFinalXORValue;
 
             // Sets the status to indicate runtime success and returns calculated checksum to the caller.
-            crc_status = static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kCRCChecksumCalculated);
+            crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumCalculated);
             return crc_checksum;
         }
 
@@ -296,8 +228,7 @@ class CRCProcessor
             // Ensures there is enough space in the buffer for the CRC to be added at the start index.
             if (kCRCByteLength > static_cast<uint16_t>(buffer_size) - start_index)
             {
-                crc_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kAddCRCChecksumBufferTooSmall);
+                crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kAddCRCChecksumBufferTooSmall);
                 return 0;
             }
 
@@ -312,7 +243,7 @@ class CRCProcessor
 
             // Returns the new size of the buffer after appending the CRC checksum to it and also sets the crc_status
             // appropriately.
-            crc_status = static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kCRCChecksumAddedToBuffer);
+            crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumAddedToBuffer);
             return start_index + kCRCByteLength;
         }
 
@@ -365,8 +296,7 @@ class CRCProcessor
             // Ensures the CRC checksum to read is fully within the bounds of the buffer
             if (kCRCByteLength > static_cast<uint16_t>(buffer_size) - start_index)
             {
-                crc_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kReadCRCChecksumBufferTooSmall);
+                crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kReadCRCChecksumBufferTooSmall);
                 // Note. Similar to checksum calculator method, 0 is a perfectly valid number. The only way to
                 // determine the runtime status of the method is to use the crc_status byte-code.
                 return 0;
@@ -383,45 +313,28 @@ class CRCProcessor
             }
 
             // Returns the extracted crc to caller and sets the crc_status appropriately.
-            crc_status = static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kCRCChecksumReadFromBuffer);
+            crc_status = static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumReadFromBuffer);
             return static_cast<PolynomialType>(extracted_crc);
         }
 
     private:
-        /// Stores the initial value used for the CRC checksum calculation. Specifically, this is the value that the
-        /// CRC checksum variable is initialized to at the beginning of each CalculatePacketCRCChecksum() method
-        /// runtime.
+        /// Stores the initial value used for the CRC checksum calculation.
         const PolynomialType kInitialValue;
 
-        /// Stores the final XOR value used for the CRC checksum calculation. Specifically, this is the value that the
-        /// CRC checksum variable is XORed with prior to being returned to caller at the end of each
-        /// CalculatePacketCRCChecksum() method runtime.
+        /// Stores the final XOR value used for the CRC checksum calculation.
         const PolynomialType kFinalXORValue;
 
-        /// Stores the length of the CRC polynomial in bytes. This is used across most methods of the class to
-        /// automatically scale processing to the number of bytes used to store the CRC checksum value.
+        /// Stores the size of the CRC polynomial in bytes.
         static constexpr uint8_t kCRCByteLength = sizeof(PolynomialType);  // NOLINT(*-dynamic-static-initializers)
 
         /**
-         * @brief Uses the polynomial specified (as an argument) during class instantiation to compute the CRC
-         * checksums for each possible uint8_t (byte) value.
-         *
-         * @attention This method has to be called before calculating any CRC checksum via
-         * CalculatePacketCRCChecksum() method. Currently, this is enforced by calling this method inside the class
-         * constructor.
-         *
-         * The method is configured to update the crc_table with generated CRC values as they get generated, so the
-         * crc_table has to be initialized correctly for this method to work properly.
-         *
-         * @note The generation of the CRC table vastly increases the speed of CRC checksum computation at the cost of
-         * reserving a portion of RAM to store the table. This may be an issue when the library runs on
-         * memory-constrained platforms, such as Arduino Uno microcontrollers. In that case, it is advised to use the
-         * smallest appropriate polynomial.
+         * @brief Computes the CRC lookup table for the given polynomial and saves it to the crc_table attribute.
          *
          * Example usage:
          * @code
-         * uint16_t polynomial = 0x1021; // Assumes PolynomialType of the class was set to uint16_t!
-         * GenerateCRCTable(polynomial); // Modifies class instance crc_table variable internally.
+         * // Assumes that the instance's PolynomialType template argument was set to uint16_t!
+         * uint16_t polynomial = 0x1021;
+         * GenerateCRCTable(polynomial);
          * @endcode
          */
         void GenerateCRCTable(PolynomialType polynomial)
@@ -459,7 +372,7 @@ class CRCProcessor
                     }
                     else
                     {
-                        // If the top bit is not set, simply shifts the crc value left. This moves to the next bit
+                        // If the top bit is not set, shifts the crc value left. This moves to the next bit
                         // without changing the current crc value, as division by polynomial wouldn't modify it.
                         crc <<= 1;
                     }

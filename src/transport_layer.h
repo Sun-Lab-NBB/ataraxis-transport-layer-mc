@@ -5,7 +5,7 @@
  *
  * @section tl_description Description:
  * This class provides an intermediate-level API that enables receiving and sending data over the USB or UART serial
- * ports. It conducts all necessary steps to properly encode and decode payloads, verifies their integrity and moves
+ * ports. It conducts all necessary steps to properly encode and decode payloads, verifies their integrity, and moves
  * them to and from the transmission interface buffers. This class instantiates private _transmission_buffer and
  * _reception_buffer arrays, which are used as the intermediate storage / staging areas for the processed payloads.
  * Both buffers are cleared during data transmission (for _transmission_buffer) and reception (for _reception_buffer).
@@ -70,6 +70,8 @@
 #include "axtlmc_shared_assets.h"
 #include "cobs_processor.h"
 #include "crc_processor.h"
+
+using namespace axtlmc_shared_assets;
 
 // Statically defines the size of the Serial class reception buffer associated with different Arduino and Teensy board
 // architectures. This is required to ensure the TransportLayer class is configured appropriately. If you need to adjust
@@ -195,15 +197,14 @@ template <
     typename PolynomialType                      = uint8_t,                          // Defaults to uint8_t polynomials
     const uint8_t kMaximumTransmittedPayloadSize = min(kSerialBufferSize - 8, 254),  // Intelligently caps at 254 bytes
     const uint8_t kMaximumReceivedPayloadSize    = min(kSerialBufferSize - 8, 254),  // Intelligently caps at 254 bytes
-    const uint8_t kMinimumPayloadSize            = 1>  // 1 essentially means no cap
+    const uint8_t kMinimumPayloadSize            = 1>
 class TransportLayer
 {
         // Ensures that the class only accepts uint8, 16 or 32 as valid CRC types, as no other type can be used to
         // store the CRC polynomial at the time of writing.
         static_assert(
-            axtlmc_shared_assets::is_same_v<PolynomialType, uint8_t> ||
-                axtlmc_shared_assets::is_same_v<PolynomialType, uint16_t> ||
-                axtlmc_shared_assets::is_same_v<PolynomialType, uint32_t>,
+            is_same_v<PolynomialType, uint8_t> || is_same_v<PolynomialType, uint16_t> ||
+                is_same_v<PolynomialType, uint32_t>,
             "TransportLayer class PolynomialType template parameter must be either uint8_t, uint16_t, or "
             "uint32_t."
         );
@@ -237,7 +238,7 @@ class TransportLayer
         /// enumerations available through shared_assets namespace to determine the status of the most recently called
         /// method. All status codes used by this library are unique across the library, so any returned byte-code
         /// always has a single meaning.
-        uint8_t transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kStandby);
+        uint8_t transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kStandby);
 
         /**
          * @brief Instantiates a new TransportLayer class object.
@@ -264,12 +265,6 @@ class TransportLayer
          * enter packet parsing mode. This value ideally should be different from the delimiter_byte to maintain higher
          * packet reliability, but it does not have to be. Also, it is advised to use a value that is unlikely to be
          * encountered due to random communication line noise.
-         * @param delimiter_byte The byte-range value (from 0 through 255) to be used as the delimiter (stop) byte of
-         * each packet. Encountering a delimiter_byte value is the only non-error way of ending the packet reception
-         * loop. During packet construction, this value is eliminated from the payload using COBS encoding.
-         * It is advised to use the value of 0x00 (0) as this is the only value that is guaranteed to not occur
-         * anywhere in the packet. All other values may also show up as the overhead byte
-         * (see COBSProcessor documentation for more details).
          * @param timeout The number of microseconds to wait between receiving any two consecutive bytes of the packet.
          * The algorithm uses this value to detect stale packets, as it expects all bytes of the same packet to arrive
          * close in time to each other. Primarily, this is a safeguard to break out of stale packet reception cycles
@@ -647,7 +642,7 @@ class TransportLayer
                 _port.write(_transmission_buffer, combined_size);
 
                 // Communicates that the packet has been sent via the transfer_status variable
-                transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketSent);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketSent);
 
                 // Resets the transmission_buffer after every successful transmission
                 ResetTransmissionBuffer();
@@ -696,8 +691,7 @@ class TransportLayer
             if (!Available())
             {
                 // Also sets the status appropriately
-                transfer_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kNoBytesToParseFromBuffer);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kNoBytesToParseFromBuffer);
                 return false;
             }
 
@@ -733,7 +727,7 @@ class TransportLayer
             // If the method reaches this point, the packet has been successfully received, validated and unpacked. The
             // payload is now available for consumption through the _reception_buffer. Sets the status appropriately and
             // returns 'true' to indicate successful runtime.
-            transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketReceived);
+            transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketReceived);
             return true;
         }
 
@@ -807,8 +801,7 @@ class TransportLayer
             // the payload region.
             if (required_size > kMaximumTransmittedPayloadSize)
             {
-                transfer_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kWriteObjectBufferError);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kWriteObjectBufferError);
                 return 0;
             }
 
@@ -835,7 +828,7 @@ class TransportLayer
                 max(_transmission_buffer[kPayloadSizeIndex], static_cast<uint8_t>(required_size));
 
             // Sets the status code to indicate writing to buffer was successful
-            transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kObjectWrittenToBuffer);
+            transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kObjectWrittenToBuffer);
 
             // Also returns the index immediately following the last updated (overwritten) index (relative to the start
             // of the payload) to caller to support chained method calls.
@@ -920,8 +913,7 @@ class TransportLayer
             // inside the _reception_buffer.
             if (required_size > _reception_buffer[kPayloadSizeIndex])
             {
-                transfer_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kReadObjectBufferError);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kReadObjectBufferError);
                 return 0;
             }
 
@@ -939,7 +931,7 @@ class TransportLayer
             );
 
             // Sets the status code to indicate reading from buffer was successful
-            transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kObjectReadFromBuffer);
+            transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kObjectReadFromBuffer);
 
             // Also returns the index immediately following the index of the final read byte (relative to the payload)
             // to caller. This index can be used as the next input start_index if multiple read calls are chained
@@ -1005,7 +997,7 @@ class TransportLayer
         static constexpr uint16_t kMinimumPacketSize =  // NOLINT(*-dynamic-static-initializers)
             kMinimumPayloadSize + kOverheadByteIndex + kPostambleSize;
 
-        /// Stores the size of the _transmission_buffer array, which is derived based on the preamble, encoded payload
+        /// Stores the size of the _transmission_buffer array, which is derived based on the preamble, encoded payload,
         /// and postamble size. The +2 accounts for the overhead byte and delimiter byte of the encoded payload, the
         /// kPostambleSize accounts for the CRC checksum, and the kOverheadByteIndex serves as the preamble size.
         static constexpr uint16_t kTransmissionBufferSize =  // NOLINT(*-dynamic-static-initializers)
@@ -1080,8 +1072,7 @@ class TransportLayer
             // If the CRC calculator runs into an error, as indicated by its status code not matching the expected
             // success code, transfers the error status to the transfer_status and returns 0 to indicate packet
             // construction failed.
-            if (_crc_processor.crc_status !=
-                static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kCRCChecksumCalculated))
+            if (_crc_processor.crc_status != static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumCalculated))
             {
                 transfer_status = _crc_processor.crc_status;
                 return 0;
@@ -1107,7 +1098,7 @@ class TransportLayer
             // checksummed and the CRC checksum has been added to the end of the encoded packet. Sets the
             // transfer_status appropriately and returns the combined size of the packet and the added CRC checksum
             // to let the caller know how many bytes to transmit to the PC.
-            transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketConstructed);
+            transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketConstructed);
             return combined_size;
         }
 
@@ -1152,27 +1143,23 @@ class TransportLayer
                 {
                     // Sets the status to indicate start byte has been found. The status is immediately used below to
                     // evaluate loop runtime
-                    transfer_status =
-                        static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketStartByteFound);
+                    transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketStartByteFound);
                     break;
                 }
             }
 
             // If the start byte was not found, aborts the method runtime and returns 0 to indicate that no data was
             // parsed as no packet was available.
-            if (transfer_status !=
-                static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketStartByteFound))
+            if (transfer_status != static_cast<uint8_t>(kTransportLayerCodes::kPacketStartByteFound))
             {
                 // Note, selects the status based on the value of the allow_start_byte_errors flag
                 if (allow_start_byte_errors)
                 {
-                    transfer_status =
-                        static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketStartByteNotFound);
+                    transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketStartByteNotFound);
                 }
                 else
                 {
-                    transfer_status =
-                        static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kNoBytesToParseFromBuffer);
+                    transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kNoBytesToParseFromBuffer);
                 }
                 return 0;
             }
@@ -1192,26 +1179,22 @@ class TransportLayer
                     if (_reception_buffer[kPayloadSizeIndex] < kMinimumPayloadSize ||
                         _reception_buffer[kPayloadSizeIndex] > kMaximumReceivedPayloadSize)
                     {
-                        transfer_status =
-                            static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kInvalidPayloadSize);
+                        transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kInvalidPayloadSize);
                         return 0;
                     }
 
                     // If the payload size is within allowed limits, advances to packet reception
                     transfer_status =
-                        static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPayloadSizeByteFound
-                        );  // Sets the status
+                        static_cast<uint8_t>(kTransportLayerCodes::kPayloadSizeByteFound);  // Sets the status
                     break;  // Gracefully breaks out of the loop
                 }
             }
 
             // If the payload_size byte was not found, aborts the method runtime and returns 0 to indicate that packet
             // reception staled at payload size reception.
-            if (transfer_status !=
-                static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPayloadSizeByteFound))
+            if (transfer_status != static_cast<uint8_t>(kTransportLayerCodes::kPayloadSizeByteFound))
             {
-                transfer_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPayloadSizeByteNotFound);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPayloadSizeByteNotFound);
                 return 0;
             }
 
@@ -1238,7 +1221,7 @@ class TransportLayer
                     bytes_read++;
                     timeout_timer = 0;  // Resets the timer whenever a byte is successfully read and the loop is active
 
-                    if (byte_value == kCOBSProcessorParameters::kDelimiterByte)
+                    if (byte_value == kBufferLayout::kDelimiterByte)
                     {
                         delimiter_found = true;  // Sets the flag to indicate that the delimiter byte was found
                         break;                   // Breaks out of the loop
@@ -1249,15 +1232,14 @@ class TransportLayer
             // Issues an error status if the loop above escaped due to a timeout
             if (timeout_timer >= kTimeout)
             {
-                transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketTimeoutError);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketTimeoutError);
                 return 0;  // Returns 0 to indicate that the packet staled at the packet reception stage
             }
 
             // Issues an error status if the loop above did not find a delimiter (after receiving all packet bytes).
             if (!delimiter_found)
             {
-                transfer_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kDelimiterNotFoundError);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kDelimiterNotFoundError);
                 return 0;
             }
 
@@ -1265,8 +1247,7 @@ class TransportLayer
             // of the packet.
             if (bytes_read != remaining_size)
             {
-                transfer_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kDelimiterFoundTooEarlyError);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kDelimiterFoundTooEarlyError);
                 return 0;
             }
 
@@ -1290,14 +1271,13 @@ class TransportLayer
             // Issues an error status if the loop above escaped due to a timeout.
             if (timeout_timer >= kTimeout)
             {
-                transfer_status =
-                    static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPostambleTimeoutError);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPostambleTimeoutError);
                 return 0;  // Returns 0 to indicate that the packet staled at the packet reception stage
             }
 
             // Otherwise, if the loop above successfully resolved the necessary number of postamble bytes, sets the
             // success status and returns to caller
-            transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketParsed);
+            transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketParsed);
 
             // Since bytes_read directly corresponds to the packet size, returns this to the caller
             return bytes_read - kOverheadByteIndex;  // Note, excludes the start and payload_size bytes
@@ -1349,8 +1329,7 @@ class TransportLayer
             // the transfer_status to the returned crc status and returns 0 to indicate crc calculator runtime error.
             // This is done to distinguish between failed CRC checks (packet corruption) and failed crc calculator
             // runtime.
-            if (_crc_processor.crc_status !=
-                static_cast<uint8_t>(axtlmc_shared_assets::kCRCProcessorCodes::kCRCChecksumCalculated))
+            if (_crc_processor.crc_status != static_cast<uint8_t>(kCRCProcessorCodes::kCRCChecksumCalculated))
             {
                 transfer_status = _crc_processor.crc_status;
                 return 0;
@@ -1362,7 +1341,7 @@ class TransportLayer
             {
                 // If the returned checksum is not 0, that means that the packet failed the CRC check and is likely
                 // corrupted.
-                transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kCRCCheckFailed);
+                transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kCRCCheckFailed);
                 return 0;
             }
 
@@ -1385,7 +1364,7 @@ class TransportLayer
 
             // If COBS decoding was successful, sets the packet status appropriately and returns the payload size to
             // caller
-            transfer_status = static_cast<uint8_t>(axtlmc_shared_assets::kTransportLayerCodes::kPacketValidated);
+            transfer_status = static_cast<uint8_t>(kTransportLayerCodes::kPacketValidated);
             return payload_size;
         }
 };

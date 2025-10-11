@@ -98,6 +98,27 @@ namespace axtlmc_shared_assets
         kPostambleTimeoutError       = 121,  ///< The Postamble was not received within the specified time frame
     };
 
+    /**
+     * @struct kBufferLayout
+     * @brief Stores the parameters that jointly define the layout and constraints for the data buffers processed by
+     * this library.
+     *
+     * The parameters from this structure are used by all classes exposed by the library to determine how to interact
+     * with the input data buffers.
+     */
+    struct kBufferLayout
+    {
+            static constexpr uint8_t kMinimumPayloadSize = 1;    ///< Prevents sending or receiving empty payloads
+            static constexpr uint8_t kMaximumPayloadSize = 254;  ///< Maximum size is capped due to COBS specification
+            static constexpr uint8_t kMinimumPacketSize  = 3;    ///< 1 payload byte, overhead, and delimiter
+            static constexpr uint16_t kMaximumPacketSize = 256;  ///< 254 payload bytes, overhead, and delimiter
+            static constexpr uint8_t kDelimiterByte      = 0;    ///< The value used as the encoded packet delimiter
+            static constexpr uint8_t kStartByteIndex     = 0;    ///< The index of the start byte value
+            static constexpr uint8_t kPayloadSizeIndex   = 1;    ///< The index of the payload size value
+            static constexpr uint8_t kOverheadByteIndex  = 2;    ///< The index of the overhead byte value
+            static constexpr uint8_t kPayloadStartIndex  = 3;    ///< The index of the first payload's data byte
+    };
+
     // Since Arduino Mega (the lower-end board this code was tested with) boards do not have access to the 'cstring'
     // header that is available to Teensy, some assets had to be reimplemented manually. They are implemented in as
     // similar of a way as possible to be drop-in replaceable with std:: namespace.

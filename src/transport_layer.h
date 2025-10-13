@@ -8,7 +8,7 @@
  * serial interfaces. It conducts all necessary operations to properly encode and decode payloads, verify their
  * integrity, and move them to and from the appropriate communication interface buffers.
  *
- * @attention This class permanently reserves up to 550 bytes of RAM for the staging buffers and up to 1024 bytes for
+ * @warning This class permanently reserves up to 550 bytes of RAM for the staging buffers and up to 1024 bytes for
  * storing the CRC lookup table. The number of bytes reserved for the staging buffers can be reduced by adjusting the
  * maximum transmission / reception buffer sizes. The number of bytes reserved for the CRC lookup table can be reduced
  * by adjusting the type of the polynomial used for the CRC checksum calculation.
@@ -76,48 +76,20 @@ static constexpr uint16_t kSerialBufferSize = 64;
 
 /**
  * @class TransportLayer
- * @brief Exposes methods that can be used to send and receive serialized data over the USB or UART transmission
- * interface.
+ * @brief Exposes methods for sending and receiving serialized data over the USB and UART communication interfaces.
  *
- * This class wraps other low-level helper classes of the library that are used to encode, validate, and bidirectionally
- * transmit arbitrary data over the USB or UART interface. To facilitate this process, the class provides two internal
- * buffers: _transmission_buffer (stages the data to be transmitted) and _reception_buffer (stores the received data).
- * Both buffers are treated as temporary storage areas and are reset by each SendData() and ReceiveData() call.
+ * This class instantiates and manages all library assets used to transcode, validate, and bidirectionally transfer
+ * serial data over the target communication interface. Critically, this includes the transmission and reception
+ * buffers that are used to temporarily store the outgoing and incoming data payloads. All user-facing class methods
+ * interact with the data stored in one of these buffers.
  *
- * @warning Since the buffers follow a very specific layout pattern required for this class to work properly,
- * they are stored as private members of this class. The buffers can be manipulated using ReadData() and WriteData()
- * methods to read received data and write the data to be transmitted. They can also be reset at any time by calling
- * ResetTransmissionBuffer() and ResetReceptionBuffer() respectively. Additionally, GetTransmissionBufferBytes() and
- * GetReceptionBufferBytes() can be used to retrieve the number of bytes currently stored inside each of the buffers.
- *
- * @attention The class tracks how many bytes are stored in each of the buffers. Specifically for the
- * _transmission_buffer, this is critical, as the tracker determines how many bytes are packed and transmitted. The
- * tracker is reset by calling ResetTransmissionBuffer() or SendData() methods and is only incremented when the payload
- * size is increased (overwriting already counted bytes does not increment the counter). For example, if you add 50
- * bytes to the buffer and then overwrite the first 20, the class will remember and send all 50 bytes unless you reset
- * the tracker before overwriting the bytes. Additionally, the tracker always assumes that the bytes to send stretch
- * from the beginning of the buffer. So, if you write 10 bytes to the middle of the buffer (say, at index 100+), the
- * tracker will assume that 100 bytes were added before the 10 bytes you provided and send 110 bytes, including
- * potentially meaningless 100 bytes. See the documentation for the WriteData() and ReadData() methods for more
- * information on byte trackers.
- *
- * @note The class is broadly configured through the combination of class template parameters and constructor arguments.
- * The template parameters (see below) need to be defined at compilation time and are necessary to support proper static
- * initialization of local arrays and subclasses. All currently used template parameters indirectly control how much RAM
- * is reserved by the class for its buffers and the CRC lookup table (via the local CRCProcessor class instance). The
- * constructor arguments allow further configuring class runtime behavior in a way that does not mandate compile-time
- * definition.
- *
- * @tparam PolynomialType The datatype of the CRC polynomial to be used by the local CRCProcessor class instance.
- * Valid types are uint8_t, uint16_t, and uint32_t. The class contains a compile-time guard against any other input
- * datatype. See CRCProcessor documentation for more details.
+ * @tparam PolynomialType The datatype of the polynomial to use for Cyclic Redundancy Check (CRC) checksum computations.
+ * Valid types are uint8_t, uint16_t, and uint32_t.
  * @tparam kMaximumTransmittedPayloadSize The maximum size of the payload that is expected to be transmitted during
- * class runtime. Note, the number is capped to 254 bytes due to COBS protocol, and it is used to determine the size of
- * the _transmission_buffer array. Use this number to indirectly control the memory reserved by the _transmission_buffer
- * (at a maximum of 254 + 8 = 262 bytes).
- * @tparam kMaximumReceivedPayloadSize The maximum size of the payload that is expected to be received during class
- * runtime. Works the same way as kMaximumTransmittedPayloadSize, but allows to independently control the size of the
- * _reception_buffer.
+ * runtime. This parameter indirectly controls the size of the instance's transmission buffer. Must be a value between
+ * 1 and 254.
+ * @tparam kMaximumReceivedPayloadSize The maximum size of the payload that is expected to be received during runtime.
+ * This parameter indirectly controls the size of the instance's reception buffer. Must be a value between 1 and 254.
  *
  * Example instantiation:
  * @code
@@ -174,25 +146,13 @@ class TransportLayer
         uint8_t runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kStandby);
 
         /**
-         * @brief Instantiates a new TransportLayer class object.
+         * @brief Initializes all runtime assets that facilitate data transmission and reception.
          *
-         * The constructor resets the _transmission_buffer and _reception_buffer of the instantiated class to 0
-         * following initialization. Also initializes the CRCProcessor class using the provided CRC parameters. Note,
-         * the CRCProcessor class is defined using the PolynomialType template parameter and, as such, expects and
-         * casts all input CRC arguments to the same type.
-         *
-         * @param communication_port A reference to the fully configured instance of the stream interface class, such as
-         * Serial or USB Serial. This class is used as a low-level access point that physically manages the hardware
-         * used to transmit and receive the serialized data.
-         * @param crc_polynomial The polynomial to use for the generation of the CRC lookup table used by the internal
-         * CRCProcessor class. Can be provided as an appropriately sized HEX number (e.g., 0x1021). Note, currently only
-         * non-reversed polynomials are supported.
-         * @param crc_initial_value The initial value to which the CRC checksum variable is initialized during
-         * calculation. This value is based on the polynomial parameter. Can be provided as an appropriately sized
-         * HEX number (e.g., 0xFFFF).
-         * @param crc_final_xor_value The final XOR value to be applied to the calculated CRC checksum value. This
-         * value is based on the polynomial parameter. Can be provided as an appropriately sized HEX number
-         * (e.g., 0x0000).
+         * @param communication_port The initialized communication interface instance, such as Serial or USB Serial.
+         * @param crc_polynomial The polynomial to use for the generation of the CRC lookup table. The polynomial must
+         * be standard (non-reflected / non-reversed).
+         * @param crc_initial_value The value to which the CRC checksum is initialized before calculation.
+         * @param crc_final_xor_value The value with which the CRC checksum is XORed after calculation.
          *
          * Example instantiation:
          * @code
@@ -216,7 +176,7 @@ class TransportLayer
         ) :
             _port(communication_port),
             _crc_processor(crc_polynomial, crc_initial_value, crc_final_xor_value),
-            _transmission_buffer {},  // Initialization doubles up as resetting buffers to 0
+            _transmission_buffer {},
             _reception_buffer {}
         {
             // Sets the start_byte placeholder to the actual start byte value. This is set at class instantiation and
@@ -456,7 +416,8 @@ class TransportLayer
          * @brief Packages the data inside the instance's transmission buffer into a serialized packet and transmits it
          * over the communication interface.
          *
-         * @note This method resets the instance's transmission buffer after transmitting the data.
+         * @warning This method resets the instance's transmission buffer after transmitting the data, discarding any
+         * data stored inside the buffer.
          *
          * Example usage:
          * @code
@@ -487,6 +448,8 @@ class TransportLayer
          * Before attempting to receive the packet, the method uses the Available() method to check whether the
          * communication interface is likely to store a well-formed packet. It is safe to call this method cyclically
          * (as part of a loop) until a packet is received.
+         *
+         * @warning Calling this method resets the instance's reception buffer, discarding any unprocessed data.
          *
          * @note The size of the received payload can be queried using the get_rx_payload_size() method.
          *

@@ -1,7 +1,7 @@
 // This file exactly matches the rx_tx_loop.cpp example and is excluded from the compiled library. It is kept here
 // to facilitate library development.
 
-// This example is intended to be sued together with the quickstart loop for the companion library:
+// This example is intended to be used together with the quickstart loop for the companion library:
 // https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart.
 // See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for more details.
 // API documentation: https://ataraxis-transport-layer-mc-api-docs.netlify.app/.
@@ -13,9 +13,9 @@
 // Includes the TransportLayer header to access user-facing library API.
 #include <transport_layer.h>
 
-// Instantiates a new TransportLayer object. Most template and constructor arguments should automatically scale with
-// your microcontroller. Check the API documentation website if you want to fine-tune class parameters to better match
-// your use case.
+// Instantiates a new TransportLayer object. Most template and constructor arguments are set to use optimal default
+// values for most host microcontrollers. Consult the ReadMe and the API documentation to learn about fine-tuning the
+// TransportLayer's parameters to better match the intended use-case.
 TransportLayer<> tl_class(Serial);  // NOLINT(*-interfaces-global-init)
 
 void setup()
@@ -38,24 +38,23 @@ void loop()
     // Checks if data is available for reception.
     if (tl_class.Available())
     {
-        // If the data is available, carries out the reception procedure (reads the received byte-stream, parses the
-        // payload, and makes it available for reading).
+        // If the data is available, carries out the reception procedure: reads the received byte-stream, parses the
+        // payload, and makes it available for reading.
         const bool data_received = tl_class.ReceiveData();
 
         // If the reception was successful, reads the data, assumed to contain serialized test objects. Note, this
         // example is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
         if (data_received)
         {
-            // Overwrites the memory of placeholder objects with the received data.
+            // Overwrites the memory of the placeholder objects with the received data.
             uint16_t next_index = 0;  // Starts reading from the beginning of the payload region.
             next_index          = tl_class.ReadData(test_scalar, next_index);
             next_index          = tl_class.ReadData(test_array, next_index);
-            // Since test_struct is the last object in the payload, we do not need to save the new next_index.
+            // Since test_struct is the last object in the payload, discards the returned index.
             tl_class.ReadData(test_struct, next_index);
 
-            // Now the placeholder objects are updated with the values transmitted from the PC. The section below
-            // showcases sending the data to the PC. It re-transmits the same data in the same order except
-            // for the test_scalar which is changed to a new value.
+            // The section below showcases sending the data to the PC. It re-transmits the same data in the same order
+            // except for the test_scalar which is changed to a new value.
             test_scalar = 987654321;
 
             // Writes objects to the TransportLayer's transmission buffer, staging them to be sent with the next
@@ -63,10 +62,10 @@ void loop()
             next_index = 0;  // Resets the index to 0.
             next_index = tl_class.WriteData(test_scalar, next_index);
             next_index = tl_class.WriteData(test_array, next_index);
-            tl_class.WriteData(test_struct, next_index);  // Once again, the index after the last object is not saved.
+            tl_class.WriteData(test_struct, next_index);  // Once again, discards the returned index.
 
-            // Packages and sends the contents of the transmission buffer that were written above to the PC.
-            tl_class.SendData();  // This also returns a boolean status that we discard for this example.
+            // Packages and sends the contents of the transmission buffer to the PC.
+            tl_class.SendData();
         }
     }
 }

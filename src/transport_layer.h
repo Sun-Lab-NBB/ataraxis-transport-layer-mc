@@ -376,38 +376,38 @@ class TransportLayer
 
         /// Returns the size of the payload currently stored in the instance's transmission buffer, in bytes.
         [[nodiscard]]
-        uint8_t get_tx_payload_size() const
+        uint8_t get_bytes_in_transmission_buffer() const
         {
             return _transmission_buffer[kBufferLayout::kPayloadSizeIndex];
         }
 
         /// Returns the size of the payload currently stored in the instance's reception buffer, in bytes.
         [[nodiscard]]
-        uint8_t get_rx_payload_size() const
+        uint8_t get_bytes_in_reception_buffer() const
         {
             return _reception_buffer[kBufferLayout::kPayloadSizeIndex];
         }
 
         /// Returns the maximum size of the payload, in bytes, that fits into the instance's transmission buffer.
-        static constexpr uint8_t get_maximum_tx_payload_size()
+        static constexpr uint8_t get_maximum_transmitted_payload_size()
         {
             return kMaximumTransmittedPayloadSize;
         }
 
         /// Returns the maximum size of the payload, in bytes, that fits into the instance's reception buffer.
-        static constexpr uint8_t get_maximum_rx_payload_size()
+        static constexpr uint8_t get_maximum_received_payload_size()
         {
             return kMaximumReceivedPayloadSize;
         }
 
         /// Returns the size of the instance's transmission buffer, in bytes.
-        static constexpr uint16_t get_tx_buffer_size()
+        static constexpr uint16_t get_transmission_buffer_size()
         {
             return kTransmissionBufferSize;
         }
 
         /// Returns the size of the instance's reception buffer, in bytes.
-        static constexpr uint16_t get_rx_buffer_size()
+        static constexpr uint16_t get_reception_buffer_size()
         {
             return kReceptionBufferSize;
         }

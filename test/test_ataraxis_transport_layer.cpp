@@ -445,13 +445,13 @@ void TestTransportLayerBufferManipulation()
     TransportLayer<uint16_t, 56, 45> protocol(mock_port, 0x1021, 0xFFFF, 0x0000);
 
     // Statically extracts the buffer sizes using accessor methods.
-    static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, 56, 45>::get_tx_buffer_size();
-    static constexpr uint16_t rx_buffer_size = TransportLayer<uint16_t, 56, 45>::get_rx_buffer_size();
+    static constexpr uint16_t tx_buffer_size = TransportLayer<uint16_t, 56, 45>::get_transmission_buffer_size();
+    static constexpr uint16_t rx_buffer_size = TransportLayer<uint16_t, 56, 45>::get_reception_buffer_size();
 
     // Verifies the performance of payload and buffer size accessor (get) methods.
-    TEST_ASSERT_EQUAL_UINT8(56, protocol.get_maximum_tx_payload_size());
+    TEST_ASSERT_EQUAL_UINT8(56, protocol.get_maximum_transmitted_payload_size());
     TEST_ASSERT_EQUAL_UINT16(62, tx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
-    TEST_ASSERT_EQUAL_UINT8(45, protocol.get_maximum_rx_payload_size());
+    TEST_ASSERT_EQUAL_UINT8(45, protocol.get_maximum_received_payload_size());
     TEST_ASSERT_EQUAL_UINT16(51, rx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
 
     // Initializes the test and expected buffers to 0. Uses two buffers due to using different sizes for reception and
@@ -487,8 +487,8 @@ void TestTransportLayerBufferManipulation()
 
     // Payload size trackers. Generally, this is a redundant check since payload size is now part of the overall buffer
     // structure, but it verifies the functioning of accessor methods.
-    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_tx_payload_size());
-    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_rx_payload_size());
+    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_transmission_buffer());
+    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_reception_buffer());
 
     // Instantiates test objects to be written to and read from the buffers
     constexpr struct TestStruct
@@ -517,7 +517,7 @@ void TestTransportLayerBufferManipulation()
     // Verifies that bytes' tracker matches the value expected given the byte-size of all written objects
     // Combines the sizes (in bytes) of all test objects to come up with the overall payload size
     constexpr uint16_t expected_bytes = sizeof(test_structure) + sizeof(test_array) + sizeof(test_value);
-    TEST_ASSERT_EQUAL_UINT16(expected_bytes, protocol.get_tx_payload_size());
+    TEST_ASSERT_EQUAL_UINT16(expected_bytes, protocol.get_bytes_in_transmission_buffer());
 
     // Checks that the _transmission_buffer itself is set to the expected values. For this, overwrites the initial
     // portion of the expected_tx_buffer with the expected values of the _transmission_buffer after data has been
@@ -714,7 +714,7 @@ void TestTransportLayerDataTransmission()
     TEST_ASSERT_TRUE(receive_status);
 
     // Verifies that the internal class _reception_buffer tracker was set to the expected payload size
-    TEST_ASSERT_EQUAL_UINT16(10, protocol.get_rx_payload_size());
+    TEST_ASSERT_EQUAL_UINT16(10, protocol.get_bytes_in_reception_buffer());
 
     // Verifies that the reverse-processed payload is the same as the original payload array. This is less involved than
     // the forward-conversion since there is no need to generate the CRC value or simulate COBS encoding here. This
@@ -735,12 +735,12 @@ void TestTransportLayerDataTransmission()
     // variables of the buffer. Since the overhead is already reset by the decoder method, only the latter action is
     // evaluated below.
     protocol.ResetReceptionBuffer();
-    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_rx_payload_size());
+    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_reception_buffer());
 
     // Also verifies ResetTransmissionBuffer() method, which works the same as the ResetReceptionBuffer() method, but
     // specifically targets the _transmission_buffer
     protocol.ResetTransmissionBuffer();
-    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_rx_payload_size());
+    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_reception_buffer());
 
     // Fully resets the mock rx_buffer with -1, which is used as a stand-in for no available data. This is to test the
     // 'false' return portion of the Available() method.

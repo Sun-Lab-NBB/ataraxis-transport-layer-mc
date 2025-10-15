@@ -92,7 +92,14 @@ layout:
 `[START] [PAYLOAD SIZE] [COBS OVERHEAD] [PAYLOAD (1 to 254 bytes)] [DELIMITER] [CRC CHECKSUM (1 to 4 bytes)]`
 
 To optimize runtime efficiency, the class generates two buffers at compile time that store the incoming and outgoing 
-data packets. TransportLayer’s WriteData() and ReadData() methods ***exclusively*** work with the **PAYLOAD** region of 
+data packets. The size of the buffers depends on the maximum expected incoming and outgoing payload sizes, defined 
+at class instantiation. The buffers are allocated to at most accommodate the maximum expected payload sizes and the 
+additional packet-related metadata. **The maximum possible memory footprint of the buffers is 512 bytes.**
+
+Additionally, the class **reserves either 256, 512, or 1024 bytes** depending on the size of the CRC polynomial 
+selected at class instantiation (8-bit, 16-bit, or 32-bit).
+
+***Note!*** TransportLayer’s WriteData() and ReadData() methods ***exclusively*** work with the **PAYLOAD** region of 
 each data buffer. End users can safely ignore all packet-related information and focus on working with transmitted and
 received serialized payloads, as it is impossible to access and manipulate packet metadata via the public API.
 
@@ -141,23 +148,22 @@ void loop()
         // example is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
         if (data_received)
         {
-            // Overwrites the memory of the placeholder objects with the received data.
-            uint16_t next_index = 0;  // Starts reading from the beginning of the payload region.
-            next_index          = tl_class.ReadData(test_scalar, next_index);
-            next_index          = tl_class.ReadData(test_array, next_index);
-            // Since test_struct is the last object in the payload, discards the returned index.
-            tl_class.ReadData(test_struct, next_index);
+            // Overwrites the memory of the placeholder objects with the received data. This gradually 'consumes' the
+            // received payload, so the data must be read in the same order as it was written to the payload.
+            tl_class.ReadData(test_scalar);
+            tl_class.ReadData(test_array);
+            tl_class.ReadData(test_struct);
 
             // The section below showcases sending the data to the PC. It re-transmits the same data in the same order
             // except for the test_scalar which is changed to a new value.
             test_scalar = 987654321;
 
             // Writes objects to the TransportLayer's transmission buffer, staging them to be sent with the next
-            // SendData() command. Note, the objects are written in the order they will be read by the PC.
-            next_index = 0;  // Resets the index to 0.
-            next_index = tl_class.WriteData(test_scalar, next_index);
-            next_index = tl_class.WriteData(test_array, next_index);
-            tl_class.WriteData(test_struct, next_index);  // Once again, discards the returned index.
+            // SendData() command. Note, the objects are written in the order they will be read by the PC, as the method
+            // automatically concatenates their data into a continuous payload byte-stream.
+            tl_class.WriteData(test_scalar);
+            tl_class.WriteData(test_array);
+            tl_class.WriteData(test_struct);
 
             // Packages and sends the contents of the transmission buffer to the PC.
             tl_class.SendData();
@@ -171,7 +177,8 @@ void loop()
 ##### Sending Data
 There are two key methods associated with sending data to the PC:
 - The `WriteData()` method serializes the input object and writes the resultant byte sequence to the 
-  transmission buffer’s payload region.
+  transmission buffer’s payload region. Each call appends the data to the end of the payload already stored in the 
+  transmission buffer.
 - The `SendData()` method encodes the payload stored in the transmission buffer into a packet using COBS, calculates 
   and adds the CRC checksum to the encoded packet, and transmits the packet to the PC. The method requires that at 
   least one byte of data is written to the staging buffer via the WriteData() method before it can be sent to the PC.
@@ -182,13 +189,12 @@ The example below showcases the sequence of steps necessary to send the data to 
 // Generates the test array to simulate the payload.
 const uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
 
-// Writes the data into the instance's transmission buffer. The method returns the index (next_index) that can be used 
-// to add another object directly behind the current object. This supports chained data writing operations, where the
-// returned index of the previous WriteData() call is used as the start_index of the next WriteData call.
-uint16_t next_index = tl_class.WriteData(test_array, 0);  // Start index is 0
+// Writes the data into the instance's transmission buffer. The method returns 'true' if it is able to write the data 
+// and 'false' otherwise.
+bool write_status = tl_class.WriteData(test_array);
 
 // Constructs and hands the packet to the communication interface to be transmitted to the PC.
-tl_class.SendData();
+tl_class.SendData();  // This method does not have expected failure states to evaluate, so it does not return anything.
 ```
 
 ***Note!*** `WriteData()` calls can overwrite the data already stored in the transmission buffer, if the method is 
@@ -202,9 +208,9 @@ There are three key methods associated with receiving data from the PC:
   its integrity with the CRC checksum, and decodes the payload from the packet using COBS. If the packet was 
   successfully received and unpacked, this method returns True.
 - The `ReadData()` method overwrites the memory (data) of the input object with the data extracted from the received 
-  payload. To do so, the method reads the number of bytes necessary to 'fill' the object with data from the payload, 
-  starting at the `start_index`. Following this procedure, the object stores the new value(s) that match the read 
-  data.
+  payload. To do so, the method reads and consumes the number of bytes necessary to 'fill' the object with data from 
+  the payload. Following this procedure, the object stores the new value(s) that match the read data and the consumed
+  bytes are discarded, meaning it is only possible to read the same data **once**.
 
 The example below showcases the sequence of steps necessary to receive data from the PC and assumes TransportLayer
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example: 
@@ -219,12 +225,11 @@ while (!tl_class.Available())
 
 // Parses the received data. Note, this method internally calls 'Available', so it is safe to call ReceiveData()
 // instead of Available() in the 'while' loop above without changing how this example behaves.
-bool receive_status = tl_class.ReceiveData();  // Returns True if the data was received and passed verification.
+bool receive_status = tl_class.ReceiveData();  // Returns 'true' if the data was received and passed verification.
 
-// Overwrites the test_array with the data received from the PC. Returns the index that can be used to read the
-// next object in the received data payload. This supports chained data reading operations, where the returned
-// index of the previous ReadData() call can be used as the start_index for the next ReadData() call.
-uint16_t next_index = tl_class.ReadData(test_array, 0);  // Start index is 0.
+// Overwrites the test_array with the data received from the PC. The method returns 'true' if it is able to read the 
+// data and 'false' otherwise.
+bool read_status = tl_class.ReadData(test_array);
 ```
 
 ***Note!*** Each call to the ReceiveData() method resets the instance’s reception buffer, discarding any potentially

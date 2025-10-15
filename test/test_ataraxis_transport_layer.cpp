@@ -122,7 +122,7 @@ void TestCOBSProcessorErrors()
     payload_buffer[10] = 0;
 
     // Encodes the payload of size 15, inserting a delimiter (0) byte at index 16, generating a packet of size 17
-    payload_buffer[1]     = 15;
+    payload_buffer[1]           = 15;
     const uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(17, encoded_size);
 
@@ -285,7 +285,7 @@ void TestCRCProcessor()
 
     // Verifies that the CRC checksum generator appends the expected checksum value
     TEST_ASSERT_EQUAL_UINT8(245, test_packet[8]);  // High byte
-    TEST_ASSERT_EQUAL_UINT8(78, test_packet[9]);  // Low byte
+    TEST_ASSERT_EQUAL_UINT8(78, test_packet[9]);   // Low byte
 
     // Verifies that the returned data + CRC postamble size matches the expected value
     TEST_ASSERT_EQUAL_UINT16(10, result);
@@ -504,22 +504,15 @@ void TestTransportLayerBufferManipulation()
     constexpr int32_t test_value = -62312;
 
     // Writes test objects into the _transmission_buffer
-    uint16_t next_index = 0;
-    next_index          = protocol.WriteData(test_structure, next_index);
-    next_index          = protocol.WriteData(test_array, next_index);
-    next_index          = protocol.WriteData(test_value, next_index);
+    bool status = protocol.WriteData(test_structure);
+    TEST_ASSERT_TRUE(status);
+    status = protocol.WriteData(test_array);
+    TEST_ASSERT_TRUE(status);
+    status = protocol.WriteData(test_value);
+    TEST_ASSERT_TRUE(status);
 
     // Verifies that the buffer status matches the expected status (bytes successfully written)
     TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.runtime_status);
-
-    // Verifies that transmission bytes tracker matches the value returned by the final write operation
-    TEST_ASSERT_EQUAL_UINT16(next_index, protocol.get_tx_payload_size());
-
-    // Verifies that the payload size tracker does not change if one of the already written bytes is overwritten and
-    // keeps the same value as achieved by the chain of the write operations above
-    const uint16_t new_index = protocol.WriteData(test_structure, 0);  // Re-writes the structure to the same place
-    TEST_ASSERT_NOT_EQUAL_UINT16(new_index, protocol.get_tx_payload_size());  // Should not be the same
-    TEST_ASSERT_EQUAL_UINT16(next_index, protocol.get_tx_payload_size());     // Should be the same
 
     // Verifies that bytes' tracker matches the value expected given the byte-size of all written objects
     // Combines the sizes (in bytes) of all test objects to come up with the overall payload size
@@ -581,19 +574,12 @@ void TestTransportLayerBufferManipulation()
 
     // Reads the data from the _reception_buffer into the newly instantiated test objects, resetting them to the
     // original test object values
-    uint16_t bytes_read = 0;
-    bytes_read          = protocol.ReadData(test_structure_new, bytes_read);
-
-    // Verifies that the bytes-read does NOT match reception bytes tracker, since the read method does not
-    // modify the bytes_in_reception_buffer value
-    TEST_ASSERT_NOT_EQUAL_UINT16(bytes_read, protocol.get_rx_payload_size());
-
-    // Continues reading data from the _transmission_buffer
-    bytes_read = protocol.ReadData(test_array_new, bytes_read);
-    bytes_read = protocol.ReadData(test_value_new, bytes_read);
-
-    // Now should be equal, as the whole payload has been effectively consumed
-    TEST_ASSERT_EQUAL_UINT16(bytes_read, protocol.get_rx_payload_size());
+    status = protocol.ReadData(test_structure_new);
+    TEST_ASSERT_TRUE(status);
+    status = protocol.ReadData(test_array_new);
+    TEST_ASSERT_TRUE(status);
+    status = protocol.ReadData(test_value_new);
+    TEST_ASSERT_TRUE(status);
 
     // Verifies that the buffer status matches the expected status (bytes successfully read)
     TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.runtime_status);
@@ -630,18 +616,16 @@ void TestTransportLayerBufferManipulationErrors()
     // Uses same rx and tx payload sizes
     TransportLayer<uint16_t, 55, 55> protocol(mock_port, 0x1021, 0xFFFF, 0x0000);
 
-    // Initializes a test variable
-    uint8_t test_value = 223;
+    // Initializes the test variables
+    uint8_t test_array[55] = {};
 
-    // Verifies that writing the variable to the last valid index of the payload works as expected and returns a valid
-    // payload size and status code
-    protocol.WriteData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_tx_payload_size() - 1);
+    // Verifies that writing a variable with the same size as the maximum payload size works as expected
+    protocol.WriteData(test_array);
     TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.runtime_status);
 
     // Verifies that attempting to write the variable to an index beyond the payload range results in an error
-    uint16_t error_index =
-        protocol.WriteData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_tx_payload_size());
-    TEST_ASSERT_EQUAL_UINT16(0, error_index);
+    bool status = protocol.WriteData(test_array);
+    TEST_ASSERT_FALSE(status);
     TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kWriteObjectBufferError, protocol.runtime_status);
 
     // Copies the contents of the _transmission_buffer to the _reception_buffer to test reception buffer manipulation
@@ -650,12 +634,12 @@ void TestTransportLayerBufferManipulationErrors()
     TEST_ASSERT_TRUE(copied);
 
     // Verifies that reading from the end of the payload functions as expected
-    protocol.ReadData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_rx_payload_size() - 1);
+    protocol.ReadData(test_array);
     TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.runtime_status);
 
     // Verifies that attempting to read from an index beyond the payload range results in an error
-    error_index = protocol.ReadData(test_value, TransportLayer<uint16_t, 55, 55>::get_maximum_rx_payload_size());
-    TEST_ASSERT_EQUAL_UINT16(0, error_index);
+    status = protocol.ReadData(test_array);
+    TEST_ASSERT_FALSE(status);
     TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kReadObjectBufferError, protocol.runtime_status);
 }
 
@@ -681,7 +665,7 @@ void TestTransportLayerDataTransmission()
     const uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
 
     // Writes the package into the _transmission_buffer
-    protocol.WriteData(test_array, 0);
+    protocol.WriteData(test_array);
 
     // Sends the payload to the Stream buffer.
     protocol.SendData();
@@ -736,7 +720,7 @@ void TestTransportLayerDataTransmission()
     // the forward-conversion since there is no need to generate the CRC value or simulate COBS encoding here. This
     // assumes these methods have been fully tested before calling this test
     uint8_t decoded_array[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // Placeholder-initialized
-    protocol.ReadData(decoded_array, 0);                         // Reads the data from _transmission_buffer
+    protocol.ReadData(decoded_array);                            // Reads the data from _transmission_buffer
 
     // Verifies that the decoded payload fully matches the test payload array contents
     TEST_ASSERT_EQUAL_UINT8_ARRAY(test_array, decoded_array, sizeof(test_array));
@@ -812,10 +796,7 @@ void TestTransportLayerDataTransmissionErrors()
     // to treat these 'errors' as 'no bytes available for reading' status, which is a non-error status
     mock_port.rx_buffer[0] = 0;  // Removes the start byte
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse),
-        protocol.runtime_status
-    );
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.runtime_status);
     mock_port.rx_buffer[0]    = 129;  // Restores the start byte
     mock_port.rx_buffer_index = 0;    // Resets readout index back to 0
 
@@ -824,10 +805,7 @@ void TestTransportLayerDataTransmissionErrors()
     // the class expects payloads of size 5 at a minimum.
     mock_port.rx_buffer[1] = -1;  // Essentially aborts reception at the payload_size byte value.
     const bool result      = protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse),
-        protocol.runtime_status
-    );
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.runtime_status);
     TEST_ASSERT_FALSE(result);
     mock_port.rx_buffer[1] = static_cast<int16_t>(test_buffer[1]);
 

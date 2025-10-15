@@ -46,23 +46,22 @@ void loop()
         // example is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
         if (data_received)
         {
-            // Overwrites the memory of the placeholder objects with the received data.
-            uint16_t next_index = 0;  // Starts reading from the beginning of the payload region.
-            next_index          = tl_class.ReadData(test_scalar, next_index);
-            next_index          = tl_class.ReadData(test_array, next_index);
-            // Since test_struct is the last object in the payload, discards the returned index.
-            tl_class.ReadData(test_struct, next_index);
+            // Overwrites the memory of the placeholder objects with the received data. This gradually 'consumes' the
+            // received payload, so the data must be read in the same order as it was written to the payload.
+            tl_class.ReadData(test_scalar);
+            tl_class.ReadData(test_array);
+            tl_class.ReadData(test_struct);
 
             // The section below showcases sending the data to the PC. It re-transmits the same data in the same order
             // except for the test_scalar which is changed to a new value.
             test_scalar = 987654321;
 
             // Writes objects to the TransportLayer's transmission buffer, staging them to be sent with the next
-            // SendData() command. Note, the objects are written in the order they will be read by the PC.
-            next_index = 0;  // Resets the index to 0.
-            next_index = tl_class.WriteData(test_scalar, next_index);
-            next_index = tl_class.WriteData(test_array, next_index);
-            tl_class.WriteData(test_struct, next_index);  // Once again, discards the returned index.
+            // SendData() command. Note, the objects are written in the order they will be read by the PC, as the method
+            // automatically concatenates their data into a continuous payload byte-stream.
+            tl_class.WriteData(test_scalar);
+            tl_class.WriteData(test_array);
+            tl_class.WriteData(test_struct);
 
             // Packages and sends the contents of the transmission buffer to the PC.
             tl_class.SendData();

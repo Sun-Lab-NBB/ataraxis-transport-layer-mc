@@ -79,12 +79,11 @@ static constexpr uint16_t kSerialBufferSize = 64;
  * @brief Exposes methods for sending and receiving serialized data over the USB and UART communication interfaces.
  *
  * This class instantiates and manages all library assets used to transcode, validate, and bidirectionally transfer
- * serial data over the target communication interface. Critically, this includes the transmission and reception
- * buffers that are used to temporarily store the outgoing and incoming data payloads. All user-facing class methods
- * interact with the data stored in one of these buffers.
+ * serial data over the target communication interface.
  *
  * @tparam PolynomialType The datatype of the polynomial to use for Cyclic Redundancy Check (CRC) checksum computations.
- * Valid types are uint8_t, uint16_t, and uint32_t.
+ * This parameter indirectly controls the size of the instance's CRC lookup table. Valid types are uint8_t, uint16_t,
+ * and uint32_t.
  * @tparam kMaximumTransmittedPayloadSize The maximum size of the payload that is expected to be transmitted during
  * runtime. This parameter indirectly controls the size of the instance's transmission buffer. Must be a value between
  * 1 and 254.
@@ -263,6 +262,7 @@ class TransportLayer
         {
             _reception_buffer[kBufferLayout::kPayloadSizeIndex]  = 0;  // Payload Size
             _reception_buffer[kBufferLayout::kOverheadByteIndex] = 0;  // Overhead Byte
+            _consumed_payload_bytes                              = 0;  // Also resets the consumed payload bytes counter
         }
 
         /**
@@ -487,25 +487,15 @@ class TransportLayer
         }
 
         /**
-         * @brief Writes the input object's data to the instance's transmission buffer as bytes, starting at the
-         * specified index.
-         *
-         * This method serialized the input object and writes the resultant byte-sequence to the instance's transmission
-         * buffer's payload region.
-         *
-         * @warning If necessary, this method overwrites any existing payload data already stored in the transmission
-         * buffer with the input object's data.
-         *
-         * @note This method only works with the payload region of the transmission buffer.
+         * @brief Serializes and writes the input object's data to the end of the payload stored in the instance's
+         * transmission buffer.
          *
          * @tparam ObjectType The datatype of the object to write to the transmission buffer.
          * @param object The object to write to the transmission buffer.
-         * @param start_index The index inside the transmission buffer's payload region from which to start writing
-         * the object's data.
          * @param object_size The size of the object, in bytes.
          *
-         * @returns uint16_t The transmission buffer's index immediately following the written object's data or 0 if
-         * the method failed to write the object to the transmission buffer.
+         * @returns bool True if the method successfully writes the object's data to the transmission buffer and false
+         * otherwise.
          *
          * Example usage:
          * @code
@@ -521,30 +511,31 @@ class TransportLayer
          * } test_structure;
          *
          * // Serializes and adds the objects to the transmission buffer.
-         * uint16_t next_index = serial_protocol.WriteData(value);
-         * uint16_t next_index = serial_protocol.WriteData(array, next_index);
-         * uint16_t next_index = serial_protocol.WriteData(test_structure, next_index);
+         * bool status = serial_protocol.WriteData(value);
+         * status = serial_protocol.WriteData(array);
+         * status = serial_protocol.WriteData(test_structure);
          * @endcode
          */
         template <typename ObjectType>
-        uint16_t WriteData(
-            const ObjectType& object,
-            const uint16_t& start_index = 0,
-            const uint16_t& object_size = sizeof(ObjectType)
-        )
+        bool WriteData(const ObjectType& object, const uint16_t& object_size = sizeof(ObjectType))
         {
+            // Computes the index at which to start writing the input object's bytes based on the size of the payload
+            // already stored inside the buffer.
+            const auto start_index = static_cast<uint16_t>(_transmission_buffer[kBufferLayout::kPayloadSizeIndex]);
+
             // Calculates the total size of the payload in the transmission buffer including the new bytes to be
-            // added to the buffer
+            // added to the buffer.
             const uint16_t payload_size = start_index + object_size;
 
             // Verifies that the payload region of the buffer has enough space to accommodate the increased payload.
             if (payload_size > kMaximumTransmittedPayloadSize)
             {
+                // Returns false to indicate that the write operation failed due to insufficient buffer space.
                 runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError);
-                return 0;
+                return false;
             }
 
-            // Shifts the input start index to translate it from payload-centric to buffer-centric. The buffer contains
+            // Shifts the global start index to translate it from payload-centric to buffer-centric. The buffer contains
             // multiple metadata variables not exposed to the user, so any index that is relative to the payload has to
             // be converted to account for the preceding metadata bytes.
             uint16_t local_start_index = start_index + kBufferLayout::kPayloadStartIndex;
@@ -560,30 +551,25 @@ class TransportLayer
             _transmission_buffer[kBufferLayout::kPayloadSizeIndex] =
                 max(_transmission_buffer[kBufferLayout::kPayloadSizeIndex], static_cast<uint8_t>(payload_size));
 
-            // Sets the status code to indicate writing to buffer was successful
+            // Returns true to indicate that the data was successfully written to the transmission buffer.
             runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kObjectWrittenToBuffer);
-
-            // Returns the index immediately following the last updated (overwritten) index (relative to the start
-            // of the payload) to caller to support chained method calls.
-            return payload_size;
+            return true;
         }
 
         /**
-         * @brief Overwrites the input object's data with the data from the instance's reception buffer.
+         * @brief Overwrites the input object's data with the data from the instance's reception buffer, consuming
+         * (discarding) all read bytes.
          *
-         * This method deserializes the objects stored in the reception buffer as a sequence of bytes. While it
-         * overwrites the data of the input object, this method does not modify the data stored in the reception buffer.
-         *
-         * @note This method only works with the payload region of the transmission buffer.
+         * This method deserializes the objects stored in the reception buffer as a sequence of bytes. Calling this
+         * method consumes the read bytes, making it impossible to retrieve the same data from the reception buffer
+         * again.
          *
          * @tparam ObjectType The datatype of the object to read from the reception buffer.
          * @param object The object to read from the reception buffer.
-         * @param start_index The index inside the reception buffer's payload region, from which to start reading the
-         * object's data.
          * @param object_size The size of the object, in bytes.
          *
-         * @returns uint16_t The index inside the reception buffer's payload region immediately following the last
-         * object's data byte or 0 if the method failed to read the object from the reception buffer.
+         * @returns bool True if the method successfully reads the object's data from the reception buffer and false
+         * otherwise.
          *
          * Example usage:
          * @code
@@ -599,15 +585,18 @@ class TransportLayer
          * } test_structure;
          *
          * // Overwrites the test objects with the data stored inside the buffer
-         * uint16_t next_index = serial_protocol.ReadData(value);
-         * uint16_t next_index = serial_protocol.ReadData(array, next_index);
-         * uint16_t next_index = serial_protocol.ReadData(test_structure, next_index);
+         * bool status = serial_protocol.ReadData(value);
+         * status = serial_protocol.ReadData(array);
+         * status = serial_protocol.ReadData(test_structure);
          * @endcode
          */
         template <typename ObjectType>
-        uint16_t
-        ReadData(ObjectType& object, const uint16_t& start_index = 0, const uint16_t& object_size = sizeof(ObjectType))
+        bool ReadData(ObjectType& object, const uint16_t& object_size = sizeof(ObjectType))
         {
+            // Computes the index at which to start reading the input object's data based on the number of bytes already
+            // consumed from the buffer.
+            const auto start_index = _consumed_payload_bytes;
+
             // Calculates the total size of the payload necessary to accommodate reading the object at the specified
             // index
             uint16_t required_size = start_index + object_size;
@@ -616,7 +605,7 @@ class TransportLayer
             if (required_size > _reception_buffer[kBufferLayout::kPayloadSizeIndex])
             {
                 runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kReadObjectBufferError);
-                return 0;
+                return false;
             }
 
             // Shifts the input start_index to translate it from payload-centric to buffer-centric. The buffer contains
@@ -631,13 +620,12 @@ class TransportLayer
                 object_size
             );
 
-            // Sets the status code to indicate reading from the buffer was successful
-            runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kObjectReadFromBuffer);
+            // Updates the consumed payload bytes tracker to reflect data consumption.
+            _consumed_payload_bytes += object_size;
 
-            // Returns the index immediately following the index of the final read byte (relative to the payload)
-            // to caller. This index can be used as the next input start_index if multiple read calls are chained
-            // together.
-            return required_size;
+            // Returns true to indicate that the data was successfully read from the reception buffer.
+            runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kObjectReadFromBuffer);
+            return true;
         }
 
     private:
@@ -674,6 +662,9 @@ class TransportLayer
 
         /// The buffer that stores the received data before it is consumed.
         uint8_t _reception_buffer[kReceptionBufferSize];
+
+        /// Tracks the number of received payload bytes that have been consumed via the ReadData().
+        uint16_t _consumed_payload_bytes = 0;
 
         /**
          * @brief Constructs the serialized packet using the payload stored inside the instance's transmission buffer.

@@ -2,7 +2,7 @@ Welcome to ataraxis-transport-layer-mc API documentation page
 =============================================================
 
 ataraxis-transport-layer-mc is a C++ library for Arduino and Teensy microcontrollers that provides methods for
-establishing and maintaining bidirectional communication with PC clients over USB or UART serial interfaces.
+establishing and maintaining bidirectional communication with PC clients over USB and UART serial interfaces.
 
 This library is part of the broader 'Ataraxis' science-automation project, developed in the
 `Sun (NeuroAI) lab <https://neuroai.github.io/sunlab/>`_ at Cornell University. It has a companion library written in

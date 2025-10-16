@@ -1,7 +1,7 @@
 # ataraxis-transport-layer-mc
 
 A C++ library for Arduino and Teensy microcontrollers that provides methods for establishing and maintaining 
-bidirectional communication with PC clients over USB or UART serial interfaces.
+bidirectional communication with PC clients over USB and UART serial interfaces.
 
 [![PlatformIO Registry](https://tinyurl.com/485rn6st)](https://tinyurl.com/mptfb9hb)
 ![c++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=C%2B%2B&logoColor=white)
@@ -11,26 +11,24 @@ bidirectional communication with PC clients over USB or UART serial interfaces.
 ___
 
 ## Detailed Description
-This is the C++ implementation of the ataraxis-transport-layer (AXTL) library, designed to run on Arduino or Teensy 
+This is the C++ implementation of the ataraxis-transport-layer (AXTL) library, designed to run on Arduino and Teensy 
 microcontrollers. It provides methods for bidirectionally communicating with a host-computer running the 
 [ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) companion library written in 
-Python. The library abstracts most steps necessary for data transmission, such as serializing data into payloads, 
-packing the payloads into packets, and transmitting packets as byte-streams to the receiver. It also abstracts the 
-reverse sequence of steps necessary to verify and decode the payload from the packet received as a stream of bytes. The 
-library is specifically designed to support time-critical applications, such as scientific experiments, and can achieve 
-microsecond communication speeds for newer microcontroller-PC configurations.
+Python. The library abstracts all steps necessary to safely send and receive data over the USB and UART communication
+interfaces. It is specifically designed to support time-critical applications, such as scientific experiments, and can 
+achieve microsecond communication speeds for modern microcontroller-PC hardware combinations.
+
 ___
 
 ## Features
 
 - Supports all recent Arduino and Teensy architectures and platforms.
-- Uses Consistent Overhead Byte Stuffing (COBS) to encode payloads.
+- Uses Consistent Overhead Byte Stuffing (COBS) to encode payloads during transmission.
 - Supports Circular Redundancy Check (CRC) 8-, 16- and 32-bit polynomials to ensure data integrity during transmission.
-- Fully configurable through Constructor and Template parameters.
-- Contains many sanity checks performed at compile time to reduce the potential for data corruption or loss in transit.
-- Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) libray written in Python to simplify 
-  PC-MicroController communication.
+- Allows fine-tuning all library components to support a wide range of application contexts.
+- Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) PC libray written in Python.
 - GPL 3 License.
+
 ___
 
 ## Table of Contents
@@ -44,24 +42,18 @@ ___
 - [Authors](#authors)
 - [License](#license)
 - [Acknowledgements](#Acknowledgments)
+
 ___
 
 ## Dependencies
 
-### Main Dependency
-- An IDE or Framework capable of uploading microcontroller software. This library is designed to be used with
-  [Platformio,](https://platformio.org/install) and we strongly encourage using this IDE for Arduino / Teensy 
-  development. Alternatively, [Arduino IDE](https://www.arduino.cc/en/software) also satisfies this dependency, but 
-  is not officially supported or recommended for most users.
+- An IDE or Framework capable of uploading microcontroller software that supports 
+  [Platformio](https://platformio.org/install). This library is explicitly designed to be uploaded via Platformio and 
+  will likely not work with any other IDE or Framework.
 
-### Additional Dependencies
-These dependencies will be automatically resolved whenever the library is installed via Platformio. ***They are 
-mandatory for all other IDEs / Frameworks!***
+***Note!*** Developers should see the [Developers](#developers) section for information on installing additional
+development dependencies.
 
-- [elapsedMillis](https://github.com/pfeerick/elapsedMillis/blob/master/elapsedMillis.h)
-
-For developers, see the [Developers](#developers) section for information on installing additional development 
-dependencies.
 ___
 
 ## Installation
@@ -72,42 +64,49 @@ Note, installation from source is ***highly discouraged*** for everyone who is n
 Developers should see the [Developers](#Developers) section for more details on installing from source. The instructions
 below assume you are ***not*** a developer.
 
-1. Download this repository to your local machine using your preferred method, such as Git-cloning. Use one
-   of the stable releases from [GitHub](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/releases).
+1. Download this repository to the local machine using the preferred method, such as git-cloning. Use one of the
+   [stable releases](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/releases).
 2. Unpack the downloaded tarball and move all 'src' contents into the appropriate destination 
-   ('include,' 'src' or 'libs') directory of your project.
+   ('include,' 'src,' or 'libs') directory of the project that needs to use this library.
 3. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
 
 ### Platformio
 
-1. Navigate to your platformio.ini file and add the following line to your target environment specification:
-   ```lib_deps = inkaros/ataraxis-transport-layer-mc@^1.0.3```. If you already have lib_deps specification, add the 
-   library specification to the existing list of used libraries.
+1. Navigate to the project’s platformio.ini file and add the following line to the target environment specification:
+   ```lib_deps = inkaros/ataraxis-transport-layer-mc@^2.0.0```.
 2. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
+
 ___
 
 ## Usage
 
 ### TransportLayer
-The TransportLayer class provides an intermediate-level API for bidirectional communication over USB or UART serial 
-interfaces. It ensures proper encoding and decoding of data packets using the Consistent Overhead Byte Stuffing (COBS) 
-protocol and ensures transmitted packet integrity via Cyclic Redundancy Check (CRC).
+The TransportLayer class provides the API for bidirectional communication over USB or UART serial interfaces. It 
+ensures proper encoding and decoding of data packets using the Consistent Overhead Byte Stuffing (COBS) 
+scheme and ensures transmitted packet integrity through the use of the Cyclic Redundancy Check (CRC) checksums.
 
 #### Packet Anatomy:
-This class sends and receives data in the form of packets. Each packet adheres to the following general layout:
+The TransportLayer class sends and receives data in the form of packets. Each packet adheres to the following general 
+layout:
 
 `[START] [PAYLOAD SIZE] [COBS OVERHEAD] [PAYLOAD (1 to 254 bytes)] [DELIMITER] [CRC CHECKSUM (1 to 4 bytes)]`
 
 To optimize runtime efficiency, the class generates two buffers at compile time that store the incoming and outgoing 
-data packets. TransportLayer’s WriteData() and ReadData() methods work with data ***exclusively*** from the region of 
-the buffer allocated to store the PAYLOAD bytes. The rest of the packet data is intentionally not accessible via the 
-public API. Therefore, users can safely ignore all packet-related information and focus on working with transmitted and
-received serialized payloads.
+data packets. The size of the buffers depends on the maximum expected incoming and outgoing payload sizes, defined 
+at class instantiation. The buffers are allocated to at most accommodate the maximum expected payload sizes and the 
+additional packet-related metadata. **The maximum possible memory footprint of the buffers is 512 bytes.**
+
+Additionally, the class **reserves either 256, 512, or 1024 bytes** depending on the size of the CRC polynomial 
+selected at class instantiation (8-bit, 16-bit, or 32-bit).
+
+***Note!*** TransportLayer’s WriteData() and ReadData() methods ***exclusively*** work with the **PAYLOAD** region of 
+each data buffer. End users can safely ignore all packet-related information and focus on working with transmitted and
+received serialized payloads, as it is impossible to access and manipulate packet metadata via the public API.
 
 #### Quickstart
-This is a minimal example of how to use this library. It is designed to be used together with the quickstart example
-of the [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart) library. 
-See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for .cpp implementation:
+This minimal example demonstrates how to use this library to send and receive data. It is designed to be used together
+with the quickstart example of the [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart) 
+library. See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for the .cpp implementation of this example:
 
 ```
 // Includes the core dependency for all Teensyduino projects.
@@ -116,9 +115,9 @@ See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for .cpp implementation:
 // Includes the TransportLayer header to access class API.
 #include <transport_layer.h>
 
-// Instantiates a new TransportLayer object. Most template and constructor arguments should automatically scale with
-// your microcontroller. Check the API documentation website if you want to fine-tune class parameters to better match
-// your use case.
+// Instantiates a new TransportLayer object. Most template and constructor arguments are set to use optimal default
+// values for most host microcontrollers. Consult the ReadMe and the API documentation to learn about fine-tuning the
+// TransportLayer's parameters to better match the intended use-case.
 TransportLayer<> tl_class(Serial);  // NOLINT(*-interfaces-global-init)
 
 void setup()
@@ -141,35 +140,33 @@ void loop()
     // Checks if data is available for reception.
     if (tl_class.Available())
     {
-        // If the data is available, carries out the reception procedure (reads the received byte-stream, parses the
-        // payload, and makes it available for reading).
+        // If the data is available, carries out the reception procedure: reads the received byte-stream, parses the
+        // payload, and makes it available for reading.
         const bool data_received = tl_class.ReceiveData();
 
-        // If the reception was successful, reads the data, assumed to be the test array object. Note, this example
-        // is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
+        // If the reception was successful, reads the data, assumed to contain serialized test objects. Note, this
+        // example is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
         if (data_received)
         {
-            // Overwrites the memory of placeholder objects with the received data.
-            uint16_t next_index = 0;  // Starts reading from the beginning of the payload region.
-            next_index          = tl_class.ReadData(test_scalar, next_index);
-            next_index          = tl_class.ReadData(test_array, next_index);
-            // Since test_struct is the last object in the payload, we do not need to save the new next_index.
-            tl_class.ReadData(test_struct, next_index);
+            // Overwrites the memory of the placeholder objects with the received data. This gradually 'consumes' the
+            // received payload, so the data must be read in the same order as it was written to the payload.
+            tl_class.ReadData(test_scalar);
+            tl_class.ReadData(test_array);
+            tl_class.ReadData(test_struct);
 
-            // Now the placeholder objects are updated with the values transmitted from the PC. The section below
-            // showcases sending the data to the PC. It re-transmits the same data in the same order except
-            // for the test_scalar which is changed to a new value.
+            // The section below showcases sending the data to the PC. It re-transmits the same data in the same order
+            // except for the test_scalar which is changed to a new value.
             test_scalar = 987654321;
 
             // Writes objects to the TransportLayer's transmission buffer, staging them to be sent with the next
-            // SendData() command. Note, the objects are written in the order they will be read by the PC.
-            next_index = 0;  // Resets the index to 0.
-            next_index = tl_class.WriteData(test_scalar, next_index);
-            next_index = tl_class.WriteData(test_array, next_index);
-            tl_class.WriteData(test_struct, next_index);  // Once again, the index after last object is not saved.
+            // SendData() command. Note, the objects are written in the order they will be read by the PC, as the method
+            // automatically concatenates their data into a continuous payload byte-stream.
+            tl_class.WriteData(test_scalar);
+            tl_class.WriteData(test_array);
+            tl_class.WriteData(test_struct);
 
-            // Packages and sends the contents of the transmission buffer that were written above to the PC.
-            tl_class.SendData();  // This also returns a boolean status that we discard for this example.
+            // Packages and sends the contents of the transmission buffer to the PC.
+            tl_class.SendData();
         }
     }
 }
@@ -179,11 +176,12 @@ void loop()
 
 ##### Sending Data
 There are two key methods associated with sending data to the PC:
-- The `WriteData()` method serializes the input object into bytes and writes the resultant byte sequence into 
-  the `_transmission_buffer` payload region starting at the specified `start_index`.
-- The `SendData()` method encodes the payload into a packet using COBS, calculates the CRC checksum for the encoded 
-  packet, and transmits the packet and the CRC checksum to PC. The method requires that at least one byte of data is 
-  written to the staging buffer via the WriteData() method before it can be sent to the PC.
+- The `WriteData()` method serializes the input object and writes the resultant byte sequence to the 
+  transmission buffer’s payload region. Each call appends the data to the end of the payload already stored in the 
+  transmission buffer.
+- The `SendData()` method encodes the payload stored in the transmission buffer into a packet using COBS, calculates 
+  and adds the CRC checksum to the encoded packet, and transmits the packet to the PC. The method requires that at 
+  least one byte of data is written to the staging buffer via the WriteData() method before it can be sent to the PC.
 
 The example below showcases the sequence of steps necessary to send the data to the PC and assumes TransportLayer 
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example:
@@ -191,27 +189,28 @@ The example below showcases the sequence of steps necessary to send the data to 
 // Generates the test array to simulate the payload.
 const uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
 
-// Writes the data into the _transmission_buffer. The method returns the index (next_index) that can be used to add
-// another object directly behind the current object. This supports chained data writing operations, where the
-// returned index of the previous WriteData call is used as the start_index of the next WriteData call.
-uint16_t next_index = tl_class.WriteData(test_array, 0);  // Start index is 0
+// Writes the data into the instance's transmission buffer. The method returns 'true' if it is able to write the data 
+// and 'false' otherwise.
+bool write_status = tl_class.WriteData(test_array);
 
-// Sends the payload to the Stream buffer. If all steps of this process succeed, the method returns 'true' and the
-// data is handed off to the serial interface to be transmitted.
-bool sent_status = tl_class.SendData();  // This returns True if data was sent successfully.
+// Constructs and hands the packet to the communication interface to be transmitted to the PC.
+tl_class.SendData();  // This method does not have expected failure states to evaluate, so it does not return anything.
 ```
+
+***Note!*** `WriteData()` calls can overwrite the data already stored in the transmission buffer, if the method is 
+instructed to write at an index filled by a different WriteData() call. The buffer is reset when the data is transmitted
+or via the call to the `ResetTransmissionBuffer()` method.
 
 #### Receiving Data
 There are three key methods associated with receiving data from the PC:
-- The `Available()` method checks if the serial interface has received enough bytes to justify parsing the data. If this
-  method returns False, calling ReceiveData() will likely fail.
+- The `Available()` method checks if the serial interface has received enough bytes to justify parsing the data.
 - The `ReceiveData()` method reads the encoded packet from the byte-stream stored in Serial interface buffer, verifies 
-  its integrity with CRC, and decodes the payload from the packet using COBS. If the packet was successfully received 
-  and unpacked, this method returns True.
+  its integrity with the CRC checksum, and decodes the payload from the packet using COBS. If the packet was 
+  successfully received and unpacked, this method returns True.
 - The `ReadData()` method overwrites the memory (data) of the input object with the data extracted from the received 
-  payload. To do so, the method reads the number of bytes necessary to 'fill' the object with data from the payload, 
-  starting at the `start_index`. Following this procedure, the object will have new value(s) that match the read 
-  data.
+  payload. To do so, the method reads and consumes the number of bytes necessary to 'fill' the object with data from 
+  the payload. Following this procedure, the object stores the new value(s) that match the read data and the consumed
+  bytes are discarded, meaning it is only possible to read the same data **once**.
 
 The example below showcases the sequence of steps necessary to receive data from the PC and assumes TransportLayer
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example: 
@@ -226,72 +225,72 @@ while (!tl_class.Available())
 
 // Parses the received data. Note, this method internally calls 'Available', so it is safe to call ReceiveData()
 // instead of Available() in the 'while' loop above without changing how this example behaves.
-bool receive_status = tl_class.ReceiveData();  // Returns True if the data was received and passed verification.
+bool receive_status = tl_class.ReceiveData();  // Returns 'true' if the data was received and passed verification.
 
-// Overwrites the test_array with the data received from the PC. Returns the index that can be sued to read the
-// next object in the received data payload. This supports chained data reading operations, where the returned
-// index of the previous ReadData call can be used as the start_index for the next ReadData call.
-uint16_t next_index = tl_class.ReadData(test_array, 0);  // Start index is 0.
+// Overwrites the test_array with the data received from the PC. The method returns 'true' if it is able to read the 
+// data and 'false' otherwise.
+bool read_status = tl_class.ReadData(test_array);
 ```
+
+***Note!*** Each call to the ReceiveData() method resets the instance’s reception buffer, discarding any potentially
+unprocessed data.
+
 ___
 
 ## API Documentation
 
 See the [API documentation](https://ataraxis-transport-layer-mc-api-docs.netlify.app/) for the detailed description of 
 the methods and classes exposed by components of this library.
+
 ___
 
 ## Developers
 
-This section provides installation, dependency, and build-system instructions for the developers that want to
-modify the source code of this library.
+This section provides installation, dependency, and build-system instructions for project developers.
 
-### Installing the library
+### Installing the Project
 
-1. If you do not already have it installed, install [Platformio](https://platformio.org/install/integration) either as
-   a standalone IDE or as a plugin for your main C++ IDE. As part of this process, you may need to install a standalone
-   version of [Python](https://www.python.org/downloads/).
-2. Download this repository to your local machine using your preferred method, such as git-cloning. If necessary, unpack
-   and move the project directory to the appropriate location on your system.
-3. ```cd``` to the root directory of the project using your command line interface of choice. Make sure it contains
-   the `platformio.ini` file.
-4. Run ```pio project init ``` to initialize the project on your local machine. Provide additional flags to this command
-   as needed to properly configure the project for your specific needs. See 
+1. Install [Platformio](https://platformio.org/install/integration) either as a standalone IDE or as an IDE plugin.
+2. Download this repository to the local machine using the preferred method, such as git-cloning.
+3. If the downloaded distribution is stored as a compressed archive, unpack it using the appropriate decompression tool.
+4. ```cd``` to the root directory of the prepared project distribution.
+5. Run ```pio project init ``` to initialize the project on the local machine. See 
    [Platformio API documentation](https://docs.platformio.org/en/latest/core/userguide/project/cmd_init.html) for 
-   supported flags.
-5. Optionally, use ```pio project metadata``` to dump the metadata that integrate the newly initialized project with
-   your C++ IDE. Note, not all IDEs are supported, and not all IDEs need this step.
+   more details on initializing and configuring projects with platformio.
+6. If using an IDE that does not natively support platformio integration, call the ```pio project metadata``` command 
+   to generate the metadata to integrate the project with the IDE. Note; most mainstream IDEs do not require or benefit
+   from this step.
 
-***Warning!*** If you are developing for a platform or architecture that the project is not explicitly configured for, 
-you will first need to edit the platformio.ini file to support your target microcontroller by configuring a new 
-environment. This project comes preconfigured with `teensy 4.1`, `arduino due` and `arduino mega (R3)` support.
+***Warning!*** To build this library for a platform or architecture that is not explicitly supported, edit the 
+platformio.ini file to include the desired configuration as a separate environment. This project comes preconfigured 
+with support for `teensy 4.1`, `arduino due`, and `arduino mega (R3)` platforms.
 
 ### Additional Dependencies
 
-In addition to installing platformio and main project dependencies, install the following dependencies:
+In addition to installing Platformio and main project dependencies, install the following dependencies:
 
-- [Tox](https://tox.wiki/en/4.15.0/user_guide.html), if you intend to use preconfigured tox-based project automation.
-  Currently, this is used only to build API documentation from source code docstrings.
-- [Doxygen](https://www.doxygen.nl/manual/install.html), if you want to generate C++ code documentation.
+- [Tox](https://tox.wiki/en/4.15.0/user_guide.html) and [Doxygen](https://www.doxygen.nl/manual/install.html) to build 
+  the API documentation for the project. Note; both dependencies have to be available on the local system’s path.
 
 ### Development Automation
 
-Unlike other Ataraxis libraries, the automation for this library is primarily provided via 
-[Platformio’s command line interface (cli)](https://docs.platformio.org/en/latest/core/userguide/index.html) core. 
-Additionally, we also use [tox](https://tox.wiki/en/latest/user_guide.html) for certain automation tasks not directly 
-covered by platformio, such as API documentation generation. Check [tox.ini file](tox.ini) for details about
-available pipelines and their implementation. Alternatively, call ```tox list``` from the root directory of the project
-to see the list of available tasks.
+Unlike other Ataraxis libraries, the automation for this library is primarily provided via the
+[Platformio’s command line interface](https://docs.platformio.org/en/latest/core/userguide/index.html). 
+Additionally, this project uses [tox](https://tox.wiki/en/latest/user_guide.html) for certain automation tasks not 
+directly covered by platformio, such as API documentation generation. Check the [tox.ini file](tox.ini) for details 
+about the available pipelines and their implementation. Alternatively, call ```tox list``` from the root directory of 
+the project to see the list of available tasks.
 
-**Note!** All pull requests for this project have to successfully complete the `tox`, `pio check` and `pio test` tasks 
+**Note!** All pull requests for this project have to successfully complete the `tox`, `pio check`, and `pio test` tasks 
 before being submitted.
 
 ---
 
 ## Versioning
 
-We use [semantic versioning](https://semver.org/) for this project. For the versions available, see the
-[tags on this repository](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/tags).
+This project uses [semantic versioning](https://semver.org/). See the
+[tags on this repository](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/tags) for the available project
+releases.
 
 ---
 
@@ -299,6 +298,7 @@ We use [semantic versioning](https://semver.org/) for this project. For the vers
 
 - Ivan Kondratyev ([Inkaros](https://github.com/Inkaros))
 - Jasmine Si
+
 ---
 
 ## License
@@ -309,12 +309,11 @@ This project is licensed under the GPL3 License: see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- All [Sun Lab](https://neuroai.github.io/sunlab/) members for providing the inspiration and comments during the 
+- All Sun lab [members](https://neuroai.github.io/sunlab/people) for providing the inspiration and comments during the
   development of this library.
 - [PowerBroker2](https://github.com/PowerBroker2) and his 
   [SerialTransfer](https://github.com/PowerBroker2/SerialTransfer) for inspiring this library and serving as an example 
-  and benchmark. Check SerialTransfer as a good alternative with non-overlapping functionality that may be better for 
-  your project.
-- The creators of all other projects used in our development automation pipelines [see tox.ini](tox.ini) and in our 
-  source code [see platformio.ini](platformio.ini).
+  and benchmark. Check the SerialTransfer project as a good alternative to this library with a non-overlapping 
+  set of features.
+- The creators of all other dependencies and projects listed in the [platformio.ini](platformio.ini) file.
 ---

@@ -187,7 +187,7 @@ class TransportLayer
             static_assert(
                 kTransmissionBufferSize <= kSerialBufferSize,
                 "TransportLayer's transmission buffer size exceeds the serial buffer size for this type of "
-                "microcontroller boards. If the serial buffer size was increased , edit the preprocessor "
+                "microcontroller boards. If you manually increased the serial buffer size, edit the preprocessor "
                 "directives at the top of the transport_layer.h file. Otherwise, set the "
                 "kMaximumTransmittedPayloadSize template argument of the TransportLayer class to the value appropriate "
                 "for your microcontroller board. Note, in addition to the payload, the buffer may need up to 8 extra "

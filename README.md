@@ -197,9 +197,8 @@ bool write_status = tl_class.WriteData(test_array);
 tl_class.SendData();  // This method does not have expected failure states to evaluate, so it does not return anything.
 ```
 
-***Note!*** `WriteData()` calls can overwrite the data already stored in the transmission buffer, if the method is 
-instructed to write at an index filled by a different WriteData() call. The buffer is reset when the data is transmitted
-or via the call to the `ResetTransmissionBuffer()` method.
+***Note!*** The transmission buffer is reset when the data is transmitted or via the call to the 
+`ResetTransmissionBuffer()` method. Resetting the transmission buffer discards all data stored in the buffer.
 
 #### Receiving Data
 There are three key methods associated with receiving data from the PC:

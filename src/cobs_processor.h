@@ -1,5 +1,6 @@
 /**
  * @file
+ *
  * @brief Provides the COBSProcessor class used to encode and decode data payloads during transmission using
  * the Consistent Overhead Byte Stuffing (COBS) scheme.
  *
@@ -12,59 +13,45 @@
 #ifndef AXTLMC_COBS_PROCESSOR_H
 #define AXTLMC_COBS_PROCESSOR_H
 
-//Dependencies
+// Dependencies
 #include <Arduino.h>
 #include "axtlmc_shared_assets.h"
 
 using namespace axtlmc_shared_assets;
 
 /**
- * @class COBSProcessor
- *
  * @brief Provides methods for encoding and decoding payloads using the Consistent Overhead Byte Stuffing (COBS) scheme.
  *
  * @warning This class is intended to be used by the TransportLayer class and should not be used directly by the
  * end-users. It makes specific assumptions about the layout and contents of the processed data buffers that are
  * not verified during runtime and must be enforced through the use of the TransportLayer class.
- *
- * Example instantiation:
- * @code
- * COBSProcessor cobs_class;
- * @endcode
  */
-class COBSProcessor
+class COBSProcessor final
 {
     public:
         /**
          * @brief Uses the COBS scheme to encode the input payload into a packet in-place.
          *
-         * @tparam buffer_size The size of the input buffer array, in bytes.
-         * @param buffer The buffer that stores the payload data to be encoded.
+         * @tparam kBufferSize the size of the input buffer array, in bytes.
+         * @param buffer the buffer that stores the payload data to be encoded.
          *
-         * @returns uint16_t The size of the encoded packet in bytes.
-         *
-         * Example usage:
-         * @code
-         * COBSProcessor cobs_class;
-         * uint8_t payload_buffer[7] = {0, 4, 0, 1, 2, 3, 4, 0}; // start, payload size, overhead, payload[4], delimiter
-         * uint16_t packet_size = cobs_class.EncodePayload(payload_buffer);
-         * @endcode
+         * @returns the size of the encoded packet, in bytes.
          */
-        template <size_t buffer_size>
-        static uint16_t EncodePayload(uint8_t (&buffer)[buffer_size])
+        template <const size_t kBufferSize>
+        static uint16_t EncodePayload(uint8_t (&buffer)[kBufferSize])
         {
             // Extracts the payload size from the payload_size variable.
-            const uint8_t kPayloadSize = buffer[kBufferLayout::kPayloadSizeIndex];
+            const uint8_t payload_size = buffer[kBufferLayout::kPayloadSizeIndex];
 
             // Determines start and end indices for the loop below based on the requested payload_size. Transforms the
             // indices to be buffer-centric and account for the prepended metadata bytes.
-            const uint16_t kPayloadEndIndex = kPayloadSize + kBufferLayout::kOverheadByteIndex;  // INCLUSIVE end index
+            const uint16_t payload_end_index = payload_size + kBufferLayout::kOverheadByteIndex;  // INCLUSIVE end index
 
             // Since payload_end_index is inclusive, the delimiter index immediately follows the value of that variable.
-            const uint16_t kDelimiterIndex = kPayloadEndIndex + 1;
+            const uint16_t delimiter_index = payload_end_index + 1;
 
             // Appends the delimiter_byte_value to the end of the payload buffer.
-            buffer[kDelimiterIndex] = kBufferLayout::kDelimiterByte;
+            buffer[delimiter_index] = kBufferLayout::kDelimiterByte;
 
             // Tracks discovered delimiter_byte_value instance indices during the loop below to support iterative COBS
             // encoding.
@@ -72,72 +59,68 @@ class COBSProcessor
 
             // Loops over the requested payload size in reverse and encodes all instances of delimiter_byte using the
             // COBS scheme.
-            for (uint16_t i = kPayloadEndIndex; i >= kBufferLayout::kPayloadStartIndex; --i)
+            for (uint16_t index = payload_end_index; index >= kBufferLayout::kPayloadStartIndex; --index)
             {
-                if (buffer[i] == kBufferLayout::kDelimiterByte)
+                if (buffer[index] == kBufferLayout::kDelimiterByte)
                 {
                     if (last_delimiter_index == 0)
                     {
                         // If delimiter_byte_value is encountered and last_delimiter_index is still set to the default
-                        // value of 0, computes the distance from index i to the end of the payload + 1. This is the
-                        // distance to the delimiter byte value appended to the end of the payload.
-                        buffer[i] = kDelimiterIndex - i;
+                        // value of 0, computes the distance from the current index to the end of the payload + 1,
+                        // which is the distance to the delimiter byte value appended to the end of the payload.
+                        buffer[index] = delimiter_index - index;
                     }
                     else
                     {
                         // If last_delimiter_index is set to a non-0 value, uses it to calculate the distance from the
-                        // evaluated index i to the last (encoded) delimiter byte value and overwrites the variable with
+                        // current index to the last (encoded) delimiter byte value and overwrites the variable with
                         // that distance value.
-                        buffer[i] = last_delimiter_index - i;
+                        buffer[index] = last_delimiter_index - index;
                     }
 
                     // Updates last_delimiter_index with the index of the last encoded variable
-                    last_delimiter_index = i;
+                    last_delimiter_index = index;
                 }
             }
 
             // Once all instances of delimiter_byte_value have been encoded, sets the overhead byte (index 0 of buffer)
             // to store the distance to the closest delimiter_byte_value instance.
             if (last_delimiter_index != 0)
+            {
                 // Converts the absolute index of the last delimiter to the distance to that value from the overhead
                 // byte located at index 2
                 buffer[kBufferLayout::kOverheadByteIndex] =
                     last_delimiter_index - kBufferLayout::kOverheadByteIndex;
-
-            // The delimiter byte is found under kDelimiterIndex, so the distance to the appended delimiter_byte_value
-            // from the overhead byte located at index kOverheadByteIndex is kDelimiterIndex - kOverheadByteIndex
+            }
             else
-                buffer[kBufferLayout::kOverheadByteIndex] = kDelimiterIndex - kBufferLayout::kOverheadByteIndex;
+            {
+                // Calculates the distance from the overhead byte to the appended delimiter byte value, since no
+                // encoded delimiter bytes were found in the payload.
+                buffer[kBufferLayout::kOverheadByteIndex] = delimiter_index - kBufferLayout::kOverheadByteIndex;
+            }
 
             // Returns the size of the packet accounting for the addition of the overhead byte and the delimiter byte.
-            return kPayloadSize + 2;
+            return payload_size + 2;
         }
 
         /**
          * @brief Uses the COBS scheme to decode the payload from the input packet in-place.
          *
-         * @tparam buffer_size The size of the input buffer, in bytes.
-         * @param buffer The buffer that stores the packet data from which to decode the payload.
+         * @tparam kBufferSize the size of the input buffer, in bytes.
+         * @param buffer the buffer that stores the packet data from which to decode the payload.
          *
-         * @returns uint16_t The size of the decoded payload in bytes or '0' if the method fails to decode the payload.
-         *
-         * Example usage:
-         * @code
-         * COBSProcessor cobs_class;
-         * uint8_t packet_buffer[8] = {129, 4, 5, 1, 2, 3, 4, 0};
-         * uint16_t payload_size = cobs_class.DecodePayload(storage_buffer);
-         * @endcode
+         * @returns the size of the decoded payload in bytes, or 0 if the method fails to decode the payload.
          */
-        template <size_t buffer_size>
-        static uint16_t DecodePayload(uint8_t (&buffer)[buffer_size])
+        template <const size_t kBufferSize>
+        static uint16_t DecodePayload(uint8_t (&buffer)[kBufferSize])
         {
             // Extracts payload size and uses it to calculate the packet size by adding the overhead and delimiter
             // bytes to the payload size.
-            const uint8_t kPayloadSize = buffer[kBufferLayout::kPayloadSizeIndex];
-            const uint16_t kPacketSize = kPayloadSize + 2;
+            const uint8_t payload_size = buffer[kBufferLayout::kPayloadSizeIndex];
+            const uint16_t packet_size = payload_size + 2;
 
             // Determines the expected index of the delimiter value
-            const uint16_t kDelimiterIndex = kPacketSize + 1;
+            const uint16_t delimiter_index = packet_size + 1;
 
             // Tracks the index inside the packet buffer read at each decoding cycle iteration.
             uint16_t read_index = kBufferLayout::kOverheadByteIndex;
@@ -154,20 +137,20 @@ class COBSProcessor
             read_index += next_index;
 
             // Loops over the encoded values until reaching the unencoded delimiter value at the end of the packet.
-            while (read_index <= kDelimiterIndex)
+            while (read_index <= delimiter_index)
             {
                 // Checks if the value obtained from read_index matches the packet delimiter value
                 if (buffer[read_index] == kBufferLayout::kDelimiterByte)
                 {
-                    // If the read_index matches the kDelimiterIndex, returns the size of the decoded payload as
+                    // If the read_index matches the delimiter_index, returns the size of the decoded payload as
                     // decoding is complete.
-                    if (read_index == kDelimiterIndex)
+                    if (read_index == delimiter_index)
                     {
                         // Returns the decoded payload size
-                        return kPayloadSize;
+                        return payload_size;
                     }
 
-                    // If the delimiter byte was found earlier than expected, this indicates data corruption.
+                    // If the delimiter byte was found earlier than expected, indicates data corruption.
                     return 0;
                 }
 
@@ -182,8 +165,7 @@ class COBSProcessor
                 read_index += next_index;
             }
 
-            // If decoding the packet does not result in reaching the unencoded delimiter, this indicates data
-            // corruption.
+            // If decoding the packet does not result in reaching the unencoded delimiter, indicates data corruption.
             return 0;
         }
 };

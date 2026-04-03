@@ -14,3 +14,4 @@ INPUT                  = src/cobs_processor.h \
                          src/stream_mock.h
 GENERATE_XML           = YES
 XML_OUTPUT             = xml
+GENERATE_LATEX         = NO

@@ -451,16 +451,19 @@ class TransportLayer final
         static constexpr uint8_t kPostambleSize = sizeof(PolynomialType);  // NOLINT(*-dynamic-static-initializers)
 
         /// Stores the size of the smallest packet expected to be received at runtime, in bytes.
-        static constexpr uint16_t kMinimumPacketSize =  // NOLINT(*-dynamic-static-initializers)
-            kBufferLayout::kMinimumPayloadSize + kBufferLayout::kOverheadByteIndex + kPostambleSize;
+        static constexpr uint16_t kMinimumPacketSize =
+            kBufferLayout::kMinimumPayloadSize + kBufferLayout::kOverheadByteIndex
+            + kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
 
         /// Stores the size of the instance's transmission staging buffer, in bytes.
-        static constexpr uint16_t kTransmissionBufferSize =  // NOLINT(*-dynamic-static-initializers)
-            kMaximumTransmittedPayloadSize + kBufferLayout::kOverheadByteIndex + 2 + kPostambleSize;
+        static constexpr uint16_t kTransmissionBufferSize =
+            kMaximumTransmittedPayloadSize + kBufferLayout::kOverheadByteIndex + 2
+            + kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
 
         /// Stores the size of the instance's reception staging buffer, in bytes.
-        static constexpr uint16_t kReceptionBufferSize =  // NOLINT(*-dynamic-static-initializers)
-            kMaximumReceivedPayloadSize + kBufferLayout::kOverheadByteIndex + 2 + kPostambleSize;
+        static constexpr uint16_t kReceptionBufferSize =
+            kMaximumReceivedPayloadSize + kBufferLayout::kOverheadByteIndex + 2
+            + kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
 
         // Ensures that the requested transmission buffer does not exceed the microcontroller's serial buffer size.
         static_assert(

@@ -1,7 +1,7 @@
 # ataraxis-transport-layer-mc
 
-A C++ library for Arduino and Teensy microcontrollers that provides methods for establishing and maintaining 
-bidirectional communication with PC clients over USB and UART serial interfaces.
+Provides methods for establishing and maintaining bidirectional communication with PC clients over USB and UART serial
+interfaces.
 
 [![PlatformIO Registry](https://tinyurl.com/485rn6st)](https://tinyurl.com/mptfb9hb)
 ![c++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=C%2B%2B&logoColor=white)

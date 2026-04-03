@@ -6,7 +6,7 @@ interfaces.
 [![PlatformIO Registry](https://tinyurl.com/485rn6st)](https://tinyurl.com/mptfb9hb)
 ![c++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=C%2B%2B&logoColor=white)
 ![arduino](https://img.shields.io/badge/Arduino-00878F?logo=arduino&logoColor=fff&style=plastic)
-![license](https://img.shields.io/badge/license-GPLv3-blue)
+![license](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 ___
 
@@ -22,12 +22,13 @@ ___
 
 ## Features
 
+
 - Supports all recent Arduino and Teensy architectures and platforms.
 - Uses Consistent Overhead Byte Stuffing (COBS) to encode payloads during transmission.
 - Supports Circular Redundancy Check (CRC) 8-, 16- and 32-bit polynomials to ensure data integrity during transmission.
 - Allows fine-tuning all library components to support a wide range of application contexts.
 - Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) PC libray written in Python.
-- GPL 3 License.
+- Apache 2.0 License.
 
 ___
 
@@ -302,7 +303,7 @@ releases.
 
 ## License
 
-This project is licensed under the GPL3 License: see the [LICENSE](LICENSE) file for details.
+This project is licensed under the Apache 2.0 License: see the [LICENSE](LICENSE) file for details.
 
 ---
 

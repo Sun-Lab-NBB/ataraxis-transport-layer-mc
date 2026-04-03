@@ -1,5 +1,4 @@
-# Minimal makefile for Sphinx documentation
-#
+# Minimal makefile for Sphinx documentation. Generally not used as sphinx is interfaced with using 'tox'.
 
 # You can set these variables from the command line, and also
 # from the environment for the first two.

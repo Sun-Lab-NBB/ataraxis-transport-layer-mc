@@ -1,29 +1,32 @@
-// Due to certain issues with reconnecting to teensy boards for running separate test suits, this test suit acts as a
-// single centralized hub for running all available tests for all supported classes and methods of the
-// TransportLayer library. Declare all required tests using separate functions (as needed) and then add the
-// tests to be evaluated to the RunUnityTests function at the bottom of this file. Comment unused tests out if needed.
+/**
+ * @file
+ *
+ * @brief Verifies the behavior of all classes and methods provided by the TransportLayer library.
+ *
+ * @note Due to reconnection issues with Teensy boards, all tests are centralized in a single file
+ * rather than split across separate test suites.
+ */
 
-// Dependencies
-#include <Arduino.h>  // For Arduino functions
-#include <unity.h>    // This is the C testing framework, no connection to the Unity game engine
+#include <Arduino.h>
+#include <unity.h>  // C testing framework, not the Unity game engine
 #include "axtlmc_shared_assets.h"
-#include "cobs_processor.h"   // COBSProcessor class
-#include "crc_processor.h"    // CRCProcessor class
-#include "stream_mock.h"      // StreamMock class required for TransportLayer class testing
-#include "transport_layer.h"  // TransportLayer class
+#include "cobs_processor.h"
+#include "crc_processor.h"
+#include "stream_mock.h"
+#include "transport_layer.h"
 
 using namespace axtlmc_shared_assets;
 
-// This function is called automatically before each test function. Currently not used.
+/// Called automatically before each test function. Currently unused.
 void setUp()
 {}
 
-// This function is called automatically after each test function. Currently not used.
+/// Called automatically after each test function. Currently unused.
 void tearDown()
 {}
 
-// Tests COBSProcessor's EncodePayload() and DecodePayload() methods.
-void TestCOBSProcessor()
+/// Verifies COBSProcessor EncodePayload() and DecodePayload() methods.
+void test_cobs_processor_encode_decode()
 {
     // Prepares test assets
     uint8_t payload_buffer[258];                         // Initializes test buffer
@@ -71,15 +74,15 @@ void TestCOBSProcessor()
     // Verifies that the non-packet-related portion of the buffer was not affected by the encoding/decoding cycles
     for (uint16_t i = sizeof(encoded_packet); i < static_cast<uint16_t>(sizeof(payload_buffer)); i++)
     {
-        // Uses a custom message system similar to Unity Array check to provide the filed index number
+        // Uses a custom message system similar to Unity Array check to provide the failed index number
         char message[50];  // Buffer for the failure message
         snprintf(message, sizeof(message), "Check failed at index: %d", i);
         TEST_ASSERT_EQUAL_UINT8_MESSAGE(22, payload_buffer[i], message);
     }
 }
 
-// Tests error handling for EncodePayload() and DecodePayload() COBSProcessor's methods.
-void TestCOBSProcessorErrors()
+/// Verifies error handling for COBSProcessor EncodePayload() and DecodePayload() methods.
+void test_cobs_processor_errors()
 {
     // Instantiates the class object to be tested
     COBSProcessor cobs_processor;
@@ -148,9 +151,8 @@ void TestCOBSProcessorErrors()
     TEST_ASSERT_EQUAL_UINT16(0, result);
 }
 
-// Tests CRCProcessor's GenerateCRCTable() for 8-bit polynomials.
-// The generated table is compared to the table available from https://crccalc.com/.
-void TestCRCProcessorGenerateTable_CRC8()
+/// Verifies CRCProcessor GenerateCRCTable() for 8-bit polynomials against the table from https://crccalc.com/.
+void test_crc_processor_generate_table_crc8()
 {
     // CRC-8 Table (Polynomial 0x07)
     // Make sure your controller has enough memory for the tested and generated tables. Here, the controller needs to
@@ -182,9 +184,8 @@ void TestCRCProcessorGenerateTable_CRC8()
     TEST_ASSERT_EQUAL_HEX8_ARRAY(test_crc_table, crc_processor.get_crc_table(), 256);
 }
 
-// Tests CRCProcessor's GenerateCRCTable() for 16-bit polynomials.
-// The generated table is compared to the table available from https://crccalc.com/.
-void TestCRCProcessorGenerateTable_CRC16()
+/// Verifies CRCProcessor GenerateCRCTable() for 16-bit polynomials against the table from https://crccalc.com/.
+void test_crc_processor_generate_table_crc16()
 {
     // CRC-16/CCITT-FALSE Table (Polynomial 0x1021)
     // Make sure your controller has enough memory for the tested and generated tables. Here, the controller needs to
@@ -220,9 +221,8 @@ void TestCRCProcessorGenerateTable_CRC16()
     TEST_ASSERT_EQUAL_HEX16_ARRAY(test_crc_table, crc_processor.get_crc_table(), 256);
 }
 
-// Tests CRCProcessor's GenerateCRCTable() for 32-bit polynomials.
-// The generated table is compared to the table available from https://crccalc.com/.
-void TestCRCProcessorGenerateTable_CRC32()
+/// Verifies CRCProcessor GenerateCRCTable() for 32-bit polynomials against the table from https://crccalc.com/.
+void test_crc_processor_generate_table_crc32()
 {
     // CRC-32/XFER Table (Polynomial 0x000000AF)
     // Make sure your controller has enough memory for the tested and generated tables. Here, the controller needs to
@@ -268,9 +268,8 @@ void TestCRCProcessorGenerateTable_CRC32()
     TEST_ASSERT_EQUAL_HEX32_ARRAY(test_crc_table, crc_processor.get_crc_table(), 256);
 }
 
-// Tests CRCProcessor's CalculateCRCChecksum() method. All tests are written for
-// 16-bit 0x1021 polynomial and will not work for any other polynomial.
-void TestCRCProcessor()
+/// Verifies CRCProcessor CalculateChecksum() method for 16-bit 0x1021 polynomial.
+void test_crc_processor_calculate_checksum()
 {
     // Generates the test buffer of size 10 with an example packet of size 6 and two placeholder values for the CRC
     // checksum. The preamble contains the start byte placeholder and the payload size (4), which is used to infer the
@@ -301,15 +300,15 @@ void TestCRCProcessor()
     TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
 }
 
-// Tests that the StreamMock class methods function as expected.
-void TestStreamMock()
+/// Verifies that StreamMock class methods function correctly.
+void test_stream_mock()
 {
     // Instantiates the StreamMock class object to be tested. StreamMock mimics the base Stream class, but exposes
     // rx/tx buffer for direct manipulation
     StreamMock<> stream;
 
     // Extracts stream buffer size to a local variable
-    uint16_t constexpr stream_buffer_size = StreamMock<>::kStreamBufferSize;
+    constexpr uint16_t stream_buffer_size = StreamMock<>::kStreamBufferSize;
 
     // Initializes a buffer to store the test data. Has to initialize an input buffer using uint8_t and an output
     // buffer (for test stream buffers) using int16_t. This is an unfortunate consequence of how the mock class is
@@ -326,7 +325,7 @@ void TestStreamMock()
 
     // Tests available() method. It is expected to return the size of the buffer as the number of available bytes since
     // the buffers are initialized to 0, which is a valid byte-value for this class.
-    const int32_t available_bytes = stream.available();  // Have to use int32 for type-safety as the method returns int
+    const int32_t available_bytes = stream.available();  // Uses int32 for type-safety as the method returns int
     TEST_ASSERT_EQUAL_INT32(stream_buffer_size, available_bytes);
 
     // Tests write() method with array input, which transfers the data from the input array to the stream's tx buffer
@@ -343,7 +342,7 @@ void TestStreamMock()
     TEST_ASSERT_EQUAL_size_t(data_written + byte_written, stream.tx_buffer_index);
     TEST_ASSERT_EQUAL_INT16(101, stream.tx_buffer[stream.tx_buffer_index - 1]);
 
-    // Tests reset() method, which sets booth buffers to -1 and sets the rx/tx buffer indices to 0
+    // Tests reset() method, which sets both buffers to -1 and sets the rx/tx buffer indices to 0
     stream.reset();
 
     // Verifies that the buffers have been reset to -1
@@ -402,7 +401,7 @@ void TestStreamMock()
     }
 
     // Attempts to consume an invalid value (-1) from the rx_buffer. Attempting to consume an invalid value should
-    // return - 1
+    // return -1
     read_value = static_cast<uint16_t>(stream.read());
 
     // Verifies that the method returns -1 when attempting to read invalid data
@@ -432,11 +431,8 @@ void TestStreamMock()
     TEST_ASSERT_EQUAL_size_t(0, read_bytes_number);
 }
 
-// Tests WriteData() and ReadData() methods of TransportLayer class. The test is performed as a cycle to
-// allow reusing test assets. Tests writing and reading a structure, an array and a concrete value. Also, this is the
-// only method that verifies that the class variables initialize to the expected constant values and that tests using
-// different transmission and reception buffer sizes.
-void TestTransportLayerBufferManipulation()
+/// Verifies WriteData() and ReadData() methods of the TransportLayer class using structures, arrays, and values.
+void test_transport_layer_buffer_manipulation()
 {
     // Instantiates the mock serial class and the tested TransportLayer class
     StreamMock<56> mock_port;
@@ -455,7 +451,7 @@ void TestTransportLayerBufferManipulation()
     TEST_ASSERT_EQUAL_UINT16(51, rx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
 
     // Initializes the test and expected buffers to 0. Uses two buffers due to using different sizes for reception and
-    // transmission buffers. Test buffers are used to expose the contents of the STP class iternal buffers, and expected
+    // transmission buffers. Test buffers are used to expose the contents of the STP class internal buffers, and expected
     // buffers are used to verify the state of the buffer contents extracted via test buffers.
     uint8_t expected_tx_buffer[tx_buffer_size] = {};
     uint8_t expected_rx_buffer[rx_buffer_size] = {};
@@ -491,14 +487,16 @@ void TestTransportLayerBufferManipulation()
     TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_reception_buffer());
 
     // Instantiates test objects to be written to and read from the buffers
+
+    /// Stores the test data used to verify struct serialization and deserialization.
     constexpr struct TestStruct
     {
-            uint8_t byte_value       = 122;
-            uint16_t short_value     = 45631;
-            uint32_t long_value      = 321123;
-            int8_t signed_8b_value   = -55;
-            int16_t signed_16b_value = -8213;
-    } __attribute__((packed)) test_structure;
+            uint8_t byte_value       = 122;     ///< Stores the unsigned 8-bit test value.
+            uint16_t short_value     = 45631;   ///< Stores the unsigned 16-bit test value.
+            uint32_t long_value      = 321123;  ///< Stores the unsigned 32-bit test value.
+            int8_t signed_8b_value   = -55;     ///< Stores the signed 8-bit test value.
+            int16_t signed_16b_value = -8213;   ///< Stores the signed 16-bit test value.
+    } PACKED_STRUCT test_structure;
 
     const uint8_t test_array[10] = {1, 2, 3, 4, 5, 6, 7, 8, 101, 255};
     constexpr int32_t test_value = -62312;
@@ -555,14 +553,16 @@ void TestTransportLayerBufferManipulation()
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_tx_buffer, test_tx_buffer, tx_buffer_size);
 
     // Initializes new test objects, sets all to 0, which is different from the originally used test object values
+
+    /// Stores zeroed test data used to verify deserialization from the reception buffer.
     struct TestStruct2
     {
-            uint8_t byte_value       = 0;
-            uint16_t short_value     = 0;
-            uint32_t long_value      = 0;
-            int8_t signed_8b_value   = 0;
-            int16_t signed_16b_value = 0;
-    } __attribute__((packed)) test_structure_new;
+            uint8_t byte_value       = 0;  ///< Stores the unsigned 8-bit test value.
+            uint16_t short_value     = 0;  ///< Stores the unsigned 16-bit test value.
+            uint32_t long_value      = 0;  ///< Stores the unsigned 32-bit test value.
+            int8_t signed_8b_value   = 0;  ///< Stores the signed 8-bit test value.
+            int16_t signed_16b_value = 0;  ///< Stores the signed 16-bit test value.
+    } PACKED_STRUCT test_structure_new;
 
     uint8_t test_array_new[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     int32_t test_value_new     = 0;
@@ -606,10 +606,8 @@ void TestTransportLayerBufferManipulation()
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_tx_buffer, test_rx_buffer, rx_buffer_size);
 }
 
-// Tests expected error handling by WriteData() and ReadData() methods of TransportLayer class. This is a
-// fairly minor function, as buffer reading and writing can only fail in a small subset of cases. Uses the same payload
-// size for the _reception_buffer and the _transmission_buffer.
-void TestTransportLayerBufferManipulationErrors()
+/// Verifies error handling by WriteData() and ReadData() methods of the TransportLayer class.
+void test_transport_layer_buffer_manipulation_errors()
 {
     // Initializes the tested class
     StreamMock<55> mock_port;
@@ -643,11 +641,8 @@ void TestTransportLayerBufferManipulationErrors()
     TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kReadObjectBufferError, protocol.get_runtime_status());
 }
 
-// Tests major SendData() and ReceiveData() methods of the TransportLayer class, alongside all used
-// sub-methods (ParsePacket(), ValidatePacket(), ConstructPacket()) and auxiliary methods (Available()). Note, assumes
-// lower level tests have already verified the functionality of StreamMock and buffer manipulation methods, which are
-// also used here to facilitate testing.
-void TestTransportLayerDataTransmission()
+/// Verifies SendData() and ReceiveData() methods of the TransportLayer class and all supporting sub-methods.
+void test_transport_layer_data_transmission()
 {
     // Initializes the tested class
     StreamMock<254> mock_port;  // Minimal required size
@@ -658,7 +653,7 @@ void TestTransportLayerDataTransmission()
 
     // Instantiates separate instances of encoder classes used to verify processing results
     COBSProcessor cobs_class;
-    // CRC settings HAVE to be the same as used by the TransportLayer instance.
+    // CRC settings must match those used by the TransportLayer instance.
     auto crc_class = CRCProcessor<uint16_t>(0x1021, 0xFFFF, 0x0000);
 
     // Generates the test array to be packaged and 'sent'
@@ -752,14 +747,8 @@ void TestTransportLayerDataTransmission()
     TEST_ASSERT_FALSE(data_available);
 }
 
-// Tests the errors and, where applicable, edge cases associated with the SendData() and ReceiveData() methods of the
-// TransportLayer class. No auxiliary methods are tested here since they do not raise any errors. Note,
-// focuses specifically on errors raised by TransportLayer class methods. COBS and CRC errors should be
-// tested by their respective test functions. Also, does not test errors that are generally impossible to encounter
-// without modifying the class code, such as COBS encoding due to incorrect overhead placeholder value error.
-// Note, to conserve used memory, uses CRC8 rather than CRC16. This should not affect the tested logic, but will reduce
-// the memory size reserved by these functions
-void TestTransportLayerDataTransmissionErrors()
+/// Verifies error handling for SendData() and ReceiveData() methods of the TransportLayer class.
+void test_transport_layer_data_transmission_errors()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;  // Initializes to the minimal required size
@@ -892,7 +881,8 @@ void TestTransportLayerDataTransmissionErrors()
     mock_port.rx_buffer_index = 0;               // Resets readout index back to 0
 }
 
-void TestTransportLayerDelimiterNotFoundError()
+/// Verifies that ReceiveData() reports kDelimiterNotFoundError for missing delimiters.
+void test_transport_layer_delimiter_not_found_error()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
@@ -909,12 +899,12 @@ void TestTransportLayerDelimiterNotFoundError()
     uint8_t test_buffer[15] = {129, 10, 5, 1, 2, 3, 4, 3, 6, 7, 3, 9, 10, 0, 0};
 
     memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(test_buffer) * 2);
-    mock_port.rx_buffer[13] = 1;  // Changes delimiter byte to non zero
+    mock_port.rx_buffer[13] = 1;  // Changes delimiter byte to non-zero
 
     // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
     crc_class.CalculateChecksum<false>(test_buffer);
 
-    // Simulate receiving data
+    // Simulates receiving data
     protocol.ReceiveData();
 
     // Verifies that the delimiter was not found
@@ -926,7 +916,8 @@ void TestTransportLayerDelimiterNotFoundError()
     mock_port.rx_buffer_index = 0;
 }
 
-void TestTransportLayerDelimiterFoundTooEarlyError()
+/// Verifies that ReceiveData() reports kDelimiterFoundTooEarlyError for premature delimiters.
+void test_transport_layer_delimiter_found_too_early_error()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
@@ -948,7 +939,7 @@ void TestTransportLayerDelimiterFoundTooEarlyError()
     // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
     crc_class.CalculateChecksum<false>(test_buffer);
 
-    // Simulate receiving data
+    // Simulates receiving data
     protocol.ReceiveData();
 
     // Verifies that the delimiter was found too early
@@ -960,7 +951,8 @@ void TestTransportLayerDelimiterFoundTooEarlyError()
     mock_port.rx_buffer_index = 0;
 }
 
-void TestTransportLayerPostambleTimeoutError()
+/// Verifies that ReceiveData() reports kPostambleTimeoutError when the postamble is not received.
+void test_transport_layer_postamble_timeout_error()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;
@@ -977,7 +969,7 @@ void TestTransportLayerPostambleTimeoutError()
     protocol.WriteData(test_payload);
     protocol.SendData();
 
-    /// Initializes the test buffer, omitting the postamble to simulate the timeout
+    // Initializes the test buffer, omitting the postamble to simulate the timeout
     uint8_t test_buffer[15] =
         {129, 10, 5, 1, 2, 3, 4, 3, 6, 7, 3, 9, 10, 0, 0};  // Postamble should be here but is missing
 
@@ -989,10 +981,10 @@ void TestTransportLayerPostambleTimeoutError()
     // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
     crc_class.CalculateChecksum<false>(test_buffer);
 
-    // Simulate receiving data
+    // Simulates receiving data
     protocol.ReceiveData();
 
-    // Simulate timeout for postamble not being received
+    // Simulates timeout for postamble not being received
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kPostambleTimeoutError),
         protocol.get_runtime_status()
@@ -1001,43 +993,43 @@ void TestTransportLayerPostambleTimeoutError()
     mock_port.rx_buffer_index = 0;
 }
 
-// Specifies the test functions to be executed and controls their runtime.
+/// Specifies the test functions to be executed and controls their runtime.
 int RunUnityTests()
 {
     UNITY_BEGIN();
 
     // COBS Processor
-    RUN_TEST(TestCOBSProcessor);
-    RUN_TEST(TestCOBSProcessorErrors);
+    RUN_TEST(test_cobs_processor_encode_decode);
+    RUN_TEST(test_cobs_processor_errors);
 
     // CRC Processor
-    RUN_TEST(TestCRCProcessorGenerateTable_CRC8);
-    RUN_TEST(TestCRCProcessorGenerateTable_CRC16);
+    RUN_TEST(test_crc_processor_generate_table_crc8);
+    RUN_TEST(test_crc_processor_generate_table_crc16);
 
-// This test requires at least 2048 bytes of RAM to work, disables the test for selected architectures known to not
-// have sufficient memory
+// Disables the test for selected architectures known to not have sufficient memory (requires at least 2048 bytes of
+// RAM)
 #if !defined(__AVR_ATmega328P__) && !defined(__AVR_ATmega32U4__) && !defined(__AVR_ATmega2560__) && \
     !defined(__AVR_ATtiny85__) && !defined(__AVR_ATmega168__) && !defined(__AVR_ATmega1280__) &&    \
     !defined(__AVR_ATmega8__) && !defined(__AVR_ATmega16U4__) && !defined(__AVR_ATmega32U4__) &&    \
     !defined(__SAMD21G18A__)
-    RUN_TEST(TestCRCProcessorGenerateTable_CRC32);
+    RUN_TEST(test_crc_processor_generate_table_crc32);
 #endif
 
-    RUN_TEST(TestCRCProcessor);
+    RUN_TEST(test_crc_processor_calculate_checksum);
 
     // Stream Mock
-    RUN_TEST(TestStreamMock);
+    RUN_TEST(test_stream_mock);
 
     // Serial Transfer Protocol Write / Read Data
-    RUN_TEST(TestTransportLayerBufferManipulation);
-    RUN_TEST(TestTransportLayerBufferManipulationErrors);
+    RUN_TEST(test_transport_layer_buffer_manipulation);
+    RUN_TEST(test_transport_layer_buffer_manipulation_errors);
 
     // Serial Transfer Protocol Send / Receive Data
-    RUN_TEST(TestTransportLayerDataTransmission);
-    RUN_TEST(TestTransportLayerDataTransmissionErrors);
-    RUN_TEST(TestTransportLayerDelimiterNotFoundError);
-    RUN_TEST(TestTransportLayerPostambleTimeoutError);
-    RUN_TEST(TestTransportLayerDelimiterFoundTooEarlyError);
+    RUN_TEST(test_transport_layer_data_transmission);
+    RUN_TEST(test_transport_layer_data_transmission_errors);
+    RUN_TEST(test_transport_layer_delimiter_not_found_error);
+    RUN_TEST(test_transport_layer_postamble_timeout_error);
+    RUN_TEST(test_transport_layer_delimiter_found_too_early_error);
 
     return UNITY_END();
 }
@@ -1060,8 +1052,7 @@ int RunUnityTests()
 #define SERIAL_BAUD_RATE 9600
 #endif
 
-// This is necessary for the Arduino framework testing to work as expected, which includes teensy. All tests are
-// run inside the setup function as they are intended to be one-shot tests
+/// Runs all tests inside setup() as required by the Arduino framework for one-shot testing.
 void setup()
 {
     // Starts the serial connection.
@@ -1078,6 +1069,6 @@ void setup()
     Serial.end();
 }
 
-// Nothing here as all tests are done in a one-shot fashion using the 'setup' function above
+/// Intentionally empty. All tests run in setup() as one-shot operations.
 void loop()
 {}

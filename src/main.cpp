@@ -2,8 +2,8 @@
  * @file
  * @brief Demonstrates bidirectional serial communication using the TransportLayer class.
  *
- * This file exactly matches the rx_tx_loop.cpp example and is excluded from the compiled library. It is kept here
- * to facilitate library development. This example is intended to be used together with the quickstart loop for the
+ * This file mirrors the rx_tx_loop.cpp example and is excluded from the compiled library. It is kept here to
+ * facilitate library development. This example is intended to be used together with the quickstart loop for the
  * companion library: https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart.
  *
  * @note See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for more details.

@@ -12,7 +12,7 @@
  * This class sends and receives data in the form of packets. Each packet adheres to the following general layout:
  * [START BYTE] [PAYLOAD SIZE] [OVERHEAD BYTE] [PAYLOAD] [DELIMITER BYTE] [CRC CHECKSUM]
  *
- * @warning This class permanently reserves up to 550 bytes of RAM for the staging buffers and up to 1024 bytes for
+ * @warning This class permanently reserves up to 524 bytes of RAM for the staging buffers and up to 1024 bytes for
  * storing the CRC lookup table. The number of bytes reserved for the staging buffers can be reduced by adjusting the
  * maximum transmission / reception buffer sizes. The number of bytes reserved for the CRC lookup table can be reduced
  * by adjusting the type of the polynomial used for the CRC checksum calculation.

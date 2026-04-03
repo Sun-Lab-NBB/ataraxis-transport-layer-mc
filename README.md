@@ -4,30 +4,31 @@ Provides methods for establishing and maintaining bidirectional communication wi
 interfaces.
 
 [![PlatformIO Registry](https://tinyurl.com/485rn6st)](https://tinyurl.com/mptfb9hb)
-![c++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=C%2B%2B&logoColor=white)
-![arduino](https://img.shields.io/badge/Arduino-00878F?logo=arduino&logoColor=fff&style=plastic)
-![license](https://img.shields.io/badge/license-Apache%202.0-blue)
+![C++](https://img.shields.io/badge/C%2B%2B-blue?logo=cplusplus&logoColor=white&labelColor=grey)
+![Arduino](https://img.shields.io/badge/Arduino-blue?logo=Arduino&logoColor=white&labelColor=grey)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 ___
 
 ## Detailed Description
-This is the C++ implementation of the ataraxis-transport-layer (AXTL) library, designed to run on Arduino and Teensy 
-microcontrollers. It provides methods for bidirectionally communicating with a host-computer running the 
-[ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) companion library written in 
+
+This is the C++ implementation of the ataraxis-transport-layer (AXTL) library, designed to run on Arduino and Teensy
+microcontrollers. It provides methods for bidirectionally communicating with a host-computer running the
+[ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) companion library written in
 Python. The library abstracts all steps necessary to safely send and receive data over the USB and UART communication
-interfaces. It is specifically designed to support time-critical applications, such as scientific experiments, and can 
-achieve microsecond communication speeds for modern microcontroller-PC hardware combinations.
+interfaces. It is specifically designed to support time-critical applications, such as scientific experiments, and can
+achieve microsecond communication speeds for modern microcontroller-PC hardware combinations. This library is part of
+the [Ataraxis](https://github.com/Sun-Lab-NBB/ataraxis) framework for AI-assisted scientific hardware control.
 
 ___
 
 ## Features
 
-
 - Supports all recent Arduino and Teensy architectures and platforms.
 - Uses Consistent Overhead Byte Stuffing (COBS) to encode payloads during transmission.
-- Supports Circular Redundancy Check (CRC) 8-, 16- and 32-bit polynomials to ensure data integrity during transmission.
+- Supports Cyclic Redundancy Check (CRC) 8-, 16- and 32-bit polynomials to ensure data integrity during transmission.
 - Allows fine-tuning all library components to support a wide range of application contexts.
-- Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) PC libray written in Python.
+- Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) PC library written in Python.
 - Apache 2.0 License.
 
 ___
@@ -42,7 +43,7 @@ ___
 - [Versioning](#versioning)
 - [Authors](#authors)
 - [License](#license)
-- [Acknowledgements](#Acknowledgments)
+- [Acknowledgments](#acknowledgments)
 
 ___
 
@@ -52,7 +53,7 @@ ___
   [Platformio](https://platformio.org/install). This library is explicitly designed to be uploaded via Platformio and 
   will likely not work with any other IDE or Framework.
 
-***Note!*** Developers should see the [Developers](#developers) section for information on installing additional
+***Note,*** developers should see the [Developers](#developers) section for information on installing additional
 development dependencies.
 
 ___
@@ -61,21 +62,19 @@ ___
 
 ### Source
 
-Note, installation from source is ***highly discouraged*** for everyone who is not an active project developer.
-Developers should see the [Developers](#Developers) section for more details on installing from source. The instructions
-below assume you are ***not*** a developer.
+***Note,*** installation from source is ***highly discouraged*** for anyone who is not an active project developer.
 
 1. Download this repository to the local machine using the preferred method, such as git-cloning. Use one of the
-   [stable releases](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/releases).
+   [stable releases](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/tags).
 2. Unpack the downloaded tarball and move all 'src' contents into the appropriate destination 
    ('include,' 'src,' or 'libs') directory of the project that needs to use this library.
-3. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
+3. Add ```#include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
 
 ### Platformio
 
 1. Navigate to the project’s platformio.ini file and add the following line to the target environment specification:
-   ```lib_deps = inkaros/ataraxis-transport-layer-mc@^2.0.0```.
-2. Add ```include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
+   ```lib_deps = inkaros/ataraxis-transport-layer-mc@^3.0.0```.
+2. Add ```#include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
 
 ___
 
@@ -86,7 +85,7 @@ The TransportLayer class provides the API for bidirectional communication over U
 ensures proper encoding and decoding of data packets using the Consistent Overhead Byte Stuffing (COBS) 
 scheme and ensures transmitted packet integrity through the use of the Cyclic Redundancy Check (CRC) checksums.
 
-#### Packet Anatomy:
+#### Packet Anatomy
 The TransportLayer class sends and receives data in the form of packets. Each packet adheres to the following general 
 layout:
 
@@ -95,12 +94,12 @@ layout:
 To optimize runtime efficiency, the class generates two buffers at compile time that store the incoming and outgoing 
 data packets. The size of the buffers depends on the maximum expected incoming and outgoing payload sizes, defined 
 at class instantiation. The buffers are allocated to at most accommodate the maximum expected payload sizes and the 
-additional packet-related metadata. **The maximum possible memory footprint of the buffers is 512 bytes.**
+additional packet-related metadata. **The maximum possible memory footprint of the buffers is 524 bytes.**
 
 Additionally, the class **reserves either 256, 512, or 1024 bytes** depending on the size of the CRC polynomial 
 selected at class instantiation (8-bit, 16-bit, or 32-bit).
 
-***Note!*** TransportLayer’s WriteData() and ReadData() methods ***exclusively*** work with the **PAYLOAD** region of 
+***Note,*** TransportLayer’s WriteData() and ReadData() methods ***exclusively*** work with the **PAYLOAD** region of 
 each data buffer. End users can safely ignore all packet-related information and focus on working with transmitted and
 received serialized payloads, as it is impossible to access and manipulate packet metadata via the public API.
 
@@ -198,7 +197,7 @@ bool write_status = tl_class.WriteData(test_array);
 tl_class.SendData();  // This method does not have expected failure states to evaluate, so it does not return anything.
 ```
 
-***Note!*** The transmission buffer is reset when the data is transmitted or via the call to the 
+***Note,*** the transmission buffer is reset when the data is transmitted or via the call to the 
 `ResetTransmissionBuffer()` method. Resetting the transmission buffer discards all data stored in the buffer.
 
 #### Receiving Data
@@ -232,7 +231,7 @@ bool receive_status = tl_class.ReceiveData();  // Returns 'true' if the data was
 bool read_status = tl_class.ReadData(test_array);
 ```
 
-***Note!*** Each call to the ReceiveData() method resets the instance’s reception buffer, discarding any potentially
+***Note,*** each call to the ReceiveData() method resets the instance’s reception buffer, discarding any potentially
 unprocessed data.
 
 ___
@@ -275,16 +274,16 @@ In addition to installing Platformio and main project dependencies, install the 
 ### Development Automation
 
 Unlike other Ataraxis libraries, the automation for this library is primarily provided via the
-[Platformio’s command line interface](https://docs.platformio.org/en/latest/core/userguide/index.html). 
+[PlatformIO's command line interface](https://docs.platformio.org/en/latest/core/userguide/index.html). 
 Additionally, this project uses [tox](https://tox.wiki/en/latest/user_guide.html) for certain automation tasks not 
 directly covered by platformio, such as API documentation generation. Check the [tox.ini file](tox.ini) for details 
 about the available pipelines and their implementation. Alternatively, call ```tox list``` from the root directory of 
 the project to see the list of available tasks.
 
-**Note!** All pull requests for this project have to successfully complete the `tox`, `pio check`, and `pio test` tasks 
-before being submitted.
+***Note,*** all pull requests for this project have to successfully complete the `tox`, `pio check`, and `pio test`
+tasks before being submitted.
 
----
+___
 
 ## Versioning
 
@@ -292,20 +291,20 @@ This project uses [semantic versioning](https://semver.org/). See the
 [tags on this repository](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/tags) for the available project
 releases.
 
----
+___
 
 ## Authors
 
 - Ivan Kondratyev ([Inkaros](https://github.com/Inkaros))
 - Jasmine Si
 
----
+___
 
 ## License
 
 This project is licensed under the Apache 2.0 License: see the [LICENSE](LICENSE) file for details.
 
----
+___
 
 ## Acknowledgments
 
@@ -316,4 +315,3 @@ This project is licensed under the Apache 2.0 License: see the [LICENSE](LICENSE
   and benchmark. Check the SerialTransfer project as a good alternative to this library with a non-overlapping 
   set of features.
 - The creators of all other dependencies and projects listed in the [platformio.ini](platformio.ini) file.
----

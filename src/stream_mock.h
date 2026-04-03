@@ -1,52 +1,45 @@
 /**
  * @file
- * @brief This file provides the StreamMock class used to simulate a Serial Stream interface to test the TransportLayer
+ * @brief Provides the StreamMock class used to simulate a Serial Stream interface for testing the TransportLayer
  * class.
  */
 
 #ifndef AXTLMC_STREAM_MOCK_H
 #define AXTLMC_STREAM_MOCK_H
 
-// Dependencies:
 #include <Arduino.h>
 #include <Stream.h>
 
 /**
- * @class StreamMock
- * @brief A Stream class implementation that publicly exposes its reception and transmission buffers.
+ * @brief Simulates a Serial Stream interface by publicly exposing reception and transmission buffers for testing.
  *
  * @note The instance buffers use int16_t datatype, but consider any value outside the uint8_t range (0 through 255)
  * as invalid.
  *
- * @tparam kBufferSize The size (in elements) to use for the transmission and reception buffers.
+ * @tparam kBufferSize the size, in elements, to use for the transmission and reception buffers.
  */
-template <uint16_t kBufferSize = 300>
+template <const uint16_t kBufferSize = 300>
 class StreamMock final : public Stream
 {
+        static_assert(kBufferSize > 0, "StreamMock buffer size must be greater than zero.");
+
     public:
-        /**
-         * @brief Overrides the destructor of the parent class. Does not do anything meaningful.
-         */
-        virtual ~StreamMock() = default;
+        /// Stores the size of the instance's reception and transmission buffers, in elements.
+        static constexpr uint16_t kStreamBufferSize = kBufferSize;  // NOLINT(*-dynamic-static-initializers)
 
-        /// Stores the size of ths instance's reception and transmission buffers, in elements.
-        static constexpr uint16_t buffer_size = kBufferSize;  // NOLINT(*-dynamic-static-initializers)
+        /// Stores the reception buffer data.
+        int16_t rx_buffer[kStreamBufferSize] {};
 
-        /// The reception buffer.
-        int16_t rx_buffer[buffer_size] {};
+        /// Stores the transmission buffer data.
+        int16_t tx_buffer[kStreamBufferSize] {};
 
-        /// The transmission buffer.
-        int16_t tx_buffer[buffer_size] {};
-
-        /// Tracks the currently evaluated reception buffer index (value).
+        /// Tracks the currently evaluated reception buffer index.
         size_t rx_buffer_index = 0;
 
-        /// Tracks the currently evaluated transmission buffer index (value).
+        /// Tracks the currently evaluated transmission buffer index.
         size_t tx_buffer_index = 0;
 
-        /**
-         * @brief Resets the instance's transmission and reception buffers.
-         */
+        /// Initializes the instance with zeroed transmission and reception buffers.
         StreamMock()
         {
             memset(rx_buffer, 0, sizeof(rx_buffer));
@@ -58,25 +51,25 @@ class StreamMock final : public Stream
         /**
          * @brief Reads one value ('byte') from the reception buffer.
          *
-         * @returns The read value as a byte-range integer, or -1 if no valid values are available.
+         * @returns the read value as a byte-range integer, or -1 if no valid values are available.
          */
         int read() override
         {
-            // If read index is within the confines of the rx_buffer, reads the byte currently pointed to by the index.
-            if (rx_buffer_index < sizeof(rx_buffer) / sizeof(rx_buffer[0]))  // Adjusts to count elements, not bytes
+            // Returns -1 if the read index exceeds the bounds of the reception buffer.
+            if (rx_buffer_index >= sizeof(rx_buffer) / sizeof(rx_buffer[0]))
             {
-                // Checks if the value at the current index is within the valid uint8_t range
-                if (rx_buffer[rx_buffer_index] >= 0 && rx_buffer[rx_buffer_index] <= 255)
-                {
-                    const int value = rx_buffer[rx_buffer_index];  // Reads the value from the buffer as an int
-                    rx_buffer_index++;                             // Increments after reading the value
-                    return value;                                  // Returns the read value
-                }
+                return -1;
             }
 
-            // If the index is beyond the bounds of the buffer or invalid data is encountered, returns -1 without
-            // incrementing the index to indicate there is no data to read.
-            return -1;
+            // Returns -1 if the value at the current index is outside the valid uint8_t range.
+            if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > 255)
+            {
+                return -1;
+            }
+
+            const int value = rx_buffer[rx_buffer_index];
+            rx_buffer_index++;
+            return value;
         }
 
         /**
@@ -86,36 +79,30 @@ class StreamMock final : public Stream
          * either until it processes the requested number of elements, an 'invalid' value is encountered, or there is no
          * more data to process.
          *
-         * @param buffer The buffer where to transfer the read bytes.
-         * @param length The number of bytes to read.
-         * @returns The number of bytes read and written to the input buffer or 0 if no valid data was read.
+         * @param buffer the buffer where to transfer the read bytes.
+         * @param length the number of bytes to read.
+         * @returns the number of bytes read and written to the input buffer or 0 if no valid data was read.
          */
         // ReSharper disable once CppHidingFunction
-        size_t readBytes(uint8_t *buffer, const size_t length)
+        size_t readBytes(uint8_t* buffer, const size_t length)
         {
             size_t bytes_read = 0;
 
             // Reads bytes from the reception buffer until the specified length is reached or no more valid bytes are
-            // available
+            // available.
             while (bytes_read < length && rx_buffer_index < sizeof(rx_buffer) / sizeof(rx_buffer[0]))
             {
-                // Checks if the value at the current index is within the valid uint8_t range
-                if (rx_buffer[rx_buffer_index] >= 0 && rx_buffer[rx_buffer_index] <= 255)
+                // Breaks out of the loop if an invalid value is encountered.
+                if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > 255)
                 {
-                    // Converts the int16_t value to uint8_t and stores it in the provided buffer
-                    buffer[bytes_read] = static_cast<uint8_t>(rx_buffer[rx_buffer_index]);
-                    bytes_read++;
-                    rx_buffer_index++;
-                }
-                else
-                {
-                    // If an invalid value is encountered, breaks out of the loop as there are no more valid bytes to
-                    // read
                     break;
                 }
+
+                buffer[bytes_read] = static_cast<uint8_t>(rx_buffer[rx_buffer_index]);
+                bytes_read++;
+                rx_buffer_index++;
             }
 
-            // Returns the number of bytes actually read and stored in the buffer
             return bytes_read;
         }
 
@@ -125,104 +112,96 @@ class StreamMock final : public Stream
          * @note Each writing cycle starts at index 0 of the transmission buffer, overwriting as many indices as
          * necessary to fully consume the input buffer.
          *
-         * @param buffer The buffer containing the bytes to write.
-         * @param bytes_to_write The number of bytes to write to the transmission buffer.
-         * @returns The number of bytes written to the transmission buffer.
+         * @param buffer the buffer containing the bytes to write.
+         * @param bytes_to_write the number of bytes to write to the transmission buffer.
+         * @returns the number of bytes written to the transmission buffer.
          */
-        size_t write(const uint8_t *buffer, const size_t bytes_to_write) override
+        size_t write(const uint8_t* buffer, const size_t bytes_to_write) override
         {
-            // Writes the requested number of bytes from the input buffer to the tx_buffer of the class. The method
-            // is terminated prematurely if the writing process reaches the end of the tx_buffer without consuming
-            // all bytes available from the input buffer.
-            size_t i;
-            for (i = 0; i < bytes_to_write && tx_buffer_index < sizeof(tx_buffer) / sizeof(tx_buffer[0]); i++)
+            // Writes bytes from the input buffer to the tx_buffer. Terminates prematurely if the writing process
+            // reaches the end of the tx_buffer without consuming all input bytes.
+            size_t index;
+            for (index = 0;
+                 index < bytes_to_write && tx_buffer_index < sizeof(tx_buffer) / sizeof(tx_buffer[0]);
+                 index++)
             {
-                tx_buffer[tx_buffer_index++] = static_cast<int16_t>(buffer[i]);
+                tx_buffer[tx_buffer_index++] = static_cast<int16_t>(buffer[index]);
             }
-            return i;  // Returns the number of bytes written to the tx_buffer.
+            return index;
         }
 
         /**
          * @brief Writes the input byte value to the transmission buffer.
          *
-         * @param value The value to write.
-         * @returns Integer 1 if the method writes the value to the transmission buffer and 0 otherwise.
+         * @param value the value to write.
+         * @returns 1 if the value was written to the transmission buffer, 0 otherwise.
          */
         size_t write(const uint8_t value) override
         {
-            // Checks if the buffer has space based on the last evaluated element index.
             if (tx_buffer_index < sizeof(tx_buffer) / sizeof(tx_buffer[0]))
             {
                 tx_buffer[tx_buffer_index++] = static_cast<int16_t>(value);
-                return 1;  // Number of bytes written
+                return 1;
             }
-            return 0;  // Buffer full, nothing written
+            return 0;
         }
 
         /**
          * @brief Returns the number of elements in the reception buffer available for reading.
+         *
+         * @returns the number of valid byte-range elements remaining in the reception buffer.
          */
         int available() override
         {
             size_t count = 0;
 
-            // Iterates over the rx_buffer elements starting from rx_buffer_index until the end of the buffer or the
-            // first invalid value
-            for (size_t i = rx_buffer_index; i < sizeof(rx_buffer) / sizeof(rx_buffer[0]); ++i)
+            // Iterates over rx_buffer elements starting from rx_buffer_index until the end of the buffer or the first
+            // invalid value.
+            for (size_t index = rx_buffer_index; index < sizeof(rx_buffer) / sizeof(rx_buffer[0]); ++index)
             {
-                // Checks if the current value is within the uint8_t range.
-                if (rx_buffer[i] >= 0 && rx_buffer[i] <= 255)
+                if (rx_buffer[index] < 0 || rx_buffer[index] > 255)
                 {
-                    // If so, this is considered available data, so increments the count.
-                    count++;
-                }
-                else
-                {
-                    // If an invalid value is encountered, brakes out of the loop as there is no more valid data to
-                    // count.
                     break;
                 }
+                count++;
             }
 
-            // Returns the count of available data bytes
-            return static_cast<int>(count);  // Cast count to int to match the return type
+            return static_cast<int>(count);
         }
 
         /**
          * @brief Reads a value from the reception buffer without consuming the data.
          *
-         * @returns The peeked 'byte' value between 0 and 255, or -1 if there are no valid byte-values to read.
+         * @returns the peeked 'byte' value between 0 and 255, or -1 if there are no valid byte-values to read.
          */
         int peek() override
         {
-            // Checks whether the value pointed by rx_buffer_index is within the boundaries of the rx_buffer and is a
-            // valid uint8_t value (between 0 and 255 inclusive).
-            if (rx_buffer_index < sizeof(rx_buffer) / sizeof(rx_buffer[0]) &&
-                (rx_buffer[rx_buffer_index] >= 0 && rx_buffer[rx_buffer_index] <= 255))
+            // Returns -1 if the read index exceeds the bounds of the reception buffer.
+            if (rx_buffer_index >= sizeof(rx_buffer) / sizeof(rx_buffer[0]))
             {
-                // If so, returns the value without incrementing the index.
-                return rx_buffer[rx_buffer_index];
+                return -1;
             }
-            return -1;  // If there is no valid data to peek, returns -1.
+
+            // Returns -1 if the value at the current index is outside the valid uint8_t range.
+            if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > 255)
+            {
+                return -1;
+            }
+
+            return rx_buffer[rx_buffer_index];
         }
 
-        /**
-         * @brief Simulates the data being sent to the PC (flushed) by resetting the instance's transmission buffer.
-         */
+        /// Simulates the data being sent to the PC (flushed) by resetting the instance's transmission buffer.
         void flush() override
         {
-            // Resets the tx_buffer_index and the buffer itself to simulate the data being sent ('flushed') to the PC.
-            for (size_t i = 0; i < sizeof(tx_buffer) / sizeof(tx_buffer[0]); ++i)
+            for (size_t index = 0; index < sizeof(tx_buffer) / sizeof(tx_buffer[0]); ++index)
             {
-                tx_buffer[i] = -1;  // Sets every value of the buffer to -1 (invalid / no data)
+                tx_buffer[index] = -1;
             }
-
-            tx_buffer_index = 0;  // Sets the index to 0
+            tx_buffer_index = 0;
         }
 
-        /**
-         * @brief Resets the instance's transmission and reception buffers.
-         */
+        /// Resets the instance's transmission and reception buffers.
         void reset()
         {
             memset(rx_buffer, -1, sizeof(rx_buffer));
@@ -230,6 +209,9 @@ class StreamMock final : public Stream
             rx_buffer_index = 0;
             tx_buffer_index = 0;
         }
+
+        /// Defaults the destructor.
+        virtual ~StreamMock() = default;
 };
 
 #endif  //AXTLMC_STREAM_MOCK_H

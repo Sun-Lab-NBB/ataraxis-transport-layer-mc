@@ -309,7 +309,7 @@ void TestStreamMock()
     StreamMock<> stream;
 
     // Extracts stream buffer size to a local variable
-    uint16_t constexpr stream_buffer_size = StreamMock<>::buffer_size;
+    uint16_t constexpr stream_buffer_size = StreamMock<>::kStreamBufferSize;
 
     // Initializes a buffer to store the test data. Has to initialize an input buffer using uint8_t and an output
     // buffer (for test stream buffers) using int16_t. This is an unfortunate consequence of how the mock class is
@@ -859,7 +859,7 @@ void TestTransportLayerDataTransmissionErrors()
 
     // Sets the entire rx_buffer to valid non-delimiter byte-values for the test below to work, as it has to consume
     // most of the rx_buffer to run out of the _reception_buffer space of the TransportLayer class.
-    for (uint16_t i = 15; i < StreamMock<50>::buffer_size; i++)
+    for (uint16_t i = 15; i < StreamMock<50>::kStreamBufferSize; i++)
     {
         mock_port.rx_buffer[i] = 11;
     }

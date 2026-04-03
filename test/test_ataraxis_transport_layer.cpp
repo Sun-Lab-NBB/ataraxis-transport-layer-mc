@@ -483,7 +483,7 @@ void TestTransportLayerBufferManipulation()
 
     // Transfer Status
     constexpr auto expected_code = static_cast<uint8_t>(kTransportStatusCodes::kStandby);
-    TEST_ASSERT_EQUAL_UINT8(expected_code, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(expected_code, protocol.get_runtime_status());
 
     // Payload size trackers. Generally, this is a redundant check since payload size is now part of the overall buffer
     // structure, but it verifies the functioning of accessor methods.
@@ -512,7 +512,7 @@ void TestTransportLayerBufferManipulation()
     TEST_ASSERT_TRUE(status);
 
     // Verifies that the buffer status matches the expected status (bytes successfully written)
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.get_runtime_status());
 
     // Verifies that bytes' tracker matches the value expected given the byte-size of all written objects
     // Combines the sizes (in bytes) of all test objects to come up with the overall payload size
@@ -582,7 +582,7 @@ void TestTransportLayerBufferManipulation()
     TEST_ASSERT_TRUE(status);
 
     // Verifies that the buffer status matches the expected status (bytes successfully read)
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.get_runtime_status());
 
     // Verifies that the objects read from the buffer are the same as the original objects:
     // Structure (tests field-wise)
@@ -621,12 +621,12 @@ void TestTransportLayerBufferManipulationErrors()
 
     // Verifies that writing a variable with the same size as the maximum payload size works as expected
     protocol.WriteData(test_array);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.get_runtime_status());
 
     // Verifies that attempting to write the variable to an index beyond the payload range results in an error
     bool status = protocol.WriteData(test_array);
     TEST_ASSERT_FALSE(status);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kWriteObjectBufferError, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kWriteObjectBufferError, protocol.get_runtime_status());
 
     // Copies the contents of the _transmission_buffer to the _reception_buffer to test reception buffer manipulation
     // (reading)
@@ -635,12 +635,12 @@ void TestTransportLayerBufferManipulationErrors()
 
     // Verifies that reading from the end of the payload functions as expected
     protocol.ReadData(test_array);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.get_runtime_status());
 
     // Verifies that attempting to read from an index beyond the payload range results in an error
     status = protocol.ReadData(test_array);
     TEST_ASSERT_FALSE(status);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kReadObjectBufferError, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kReadObjectBufferError, protocol.get_runtime_status());
 }
 
 // Tests major SendData() and ReceiveData() methods of the TransportLayer class, alongside all used
@@ -671,7 +671,7 @@ void TestTransportLayerDataTransmission()
     protocol.SendData();
 
     // Verifies that the data has been successfully sent to the Stream buffer
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kPacketSent, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kPacketSent, protocol.get_runtime_status());
 
     // Manually verifies the contents of the StreamMock class tx_buffer to confirm that the data has been
     // processed correctly:
@@ -710,7 +710,7 @@ void TestTransportLayerDataTransmission()
     const bool receive_status = protocol.ReceiveData();
 
     // Verifies that the data has been successfully received from the StreamMock rx buffer
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kPacketReceived, protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kPacketReceived, protocol.get_runtime_status());
     TEST_ASSERT_TRUE(receive_status);
 
     // Verifies that the internal class _reception_buffer tracker was set to the expected payload size
@@ -779,7 +779,7 @@ void TestTransportLayerDataTransmissionErrors()
     protocol.SendData();
 
     // Verifies that the data has been 'sent' successfully
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
 
     // Instantiates the test buffer. The buffer is set to the state it is expected to be found after writing and COBS
     // encoding the data, but the CRC is calculated and added separately (see below).
@@ -796,7 +796,7 @@ void TestTransportLayerDataTransmissionErrors()
     // to treat these 'errors' as 'no bytes available for reading' status, which is a non-error status
     mock_port.rx_buffer[0] = 0;  // Removes the start byte
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.get_runtime_status());
     mock_port.rx_buffer[0]    = 129;  // Restores the start byte
     mock_port.rx_buffer_index = 0;    // Resets readout index back to 0
 
@@ -805,14 +805,14 @@ void TestTransportLayerDataTransmissionErrors()
     // the class expects payloads of size 5 at a minimum.
     mock_port.rx_buffer[1] = -1;  // Essentially aborts reception at the payload_size byte value.
     const bool result      = protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.get_runtime_status());
     TEST_ASSERT_FALSE(result);
     mock_port.rx_buffer[1] = static_cast<int16_t>(test_buffer[1]);
 
     // Verifies that the algorithm correctly handles a CRC checksum error (indicates corrupted packets).
     mock_port.rx_buffer[14] = 123;  // Fake CRC byte, overwrites the crc byte value found at the end of the packet
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed), protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed), protocol.get_runtime_status());
     mock_port.rx_buffer[14]   = test_buffer[14];  // Restores the CRC byte value
     mock_port.rx_buffer_index = 0;                // Resets readout index back to 0
 
@@ -836,7 +836,7 @@ void TestTransportLayerDataTransmissionErrors()
     protocol.ReceiveData();
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kPayloadSizeByteNotFound),
-        protocol.runtime_status
+        protocol.get_runtime_status()
     );
     mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 
@@ -847,13 +847,13 @@ void TestTransportLayerDataTransmissionErrors()
     // Payload too small
     mock_port.rx_buffer[11] = 0;
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize), protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize), protocol.get_runtime_status());
     mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 
     // Payload too large
     mock_port.rx_buffer[11] = 61;
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize), protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize), protocol.get_runtime_status());
     mock_port.rx_buffer_index = 0;   // Resets readout index back to
     mock_port.rx_buffer[11]   = 10;  // Restores the payload_size byte value
 
@@ -869,7 +869,7 @@ void TestTransportLayerDataTransmissionErrors()
     // data until the timeout guard kicks-in to break the stale runtime.
     mock_port.rx_buffer[17] = -1;  // Sets byte 8 to an 'invalid' value to simulate not receiving valid bytes at index 7
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketTimeoutError), protocol.runtime_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketTimeoutError), protocol.get_runtime_status());
     mock_port.rx_buffer[17]   = test_buffer[7];  // Restores the invalidated byte back to the original value
     mock_port.rx_buffer_index = 0;               // Resets readout index back to 0
 }
@@ -902,7 +902,7 @@ void TestTransportLayerDelimiterNotFoundError()
     // Verifies that the delimiter was not found
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kDelimiterNotFoundError),
-        protocol.runtime_status
+        protocol.get_runtime_status()
     );
     mock_port.rx_buffer[14]   = test_buffer[14];
     mock_port.rx_buffer_index = 0;
@@ -936,7 +936,7 @@ void TestTransportLayerDelimiterFoundTooEarlyError()
     // Verifies that the delimiter was found too early
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kDelimiterFoundTooEarlyError),
-        protocol.runtime_status
+        protocol.get_runtime_status()
     );
     mock_port.rx_buffer[7]    = test_buffer[7];
     mock_port.rx_buffer_index = 0;
@@ -977,7 +977,7 @@ void TestTransportLayerPostambleTimeoutError()
     // Simulate timeout for postamble not being received
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kPostambleTimeoutError),
-        protocol.runtime_status
+        protocol.get_runtime_status()
     );
     mock_port.rx_buffer[14]   = test_buffer[14];
     mock_port.rx_buffer_index = 0;

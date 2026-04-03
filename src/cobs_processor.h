@@ -89,8 +89,7 @@ class COBSProcessor final
             {
                 // Converts the absolute index of the last delimiter to the distance to that value from the overhead
                 // byte located at index 2
-                buffer[kBufferLayout::kOverheadByteIndex] =
-                    last_delimiter_index - kBufferLayout::kOverheadByteIndex;
+                buffer[kBufferLayout::kOverheadByteIndex] = last_delimiter_index - kBufferLayout::kOverheadByteIndex;
             }
             else
             {

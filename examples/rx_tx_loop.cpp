@@ -26,8 +26,8 @@ uint8_t test_array[4] = {0, 0, 0, 0};
 /// Stores the test data used to verify struct serialization.
 struct TestStruct
 {
-        bool test_flag   = true;   ///< Determines whether the test flag is set.
-        float test_float = 6.66;   ///< Stores the floating-point value used for serialization testing.
+        bool test_flag   = true;  ///< Determines whether the test flag is set.
+        float test_float = 6.66;  ///< Stores the floating-point value used for serialization testing.
 } PACKED_STRUCT test_struct;
 
 /// Initializes the serial communication interface.

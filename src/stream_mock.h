@@ -121,8 +121,7 @@ class StreamMock final : public Stream
             // Writes bytes from the input buffer to the tx_buffer. Terminates prematurely if the writing process
             // reaches the end of the tx_buffer without consuming all input bytes.
             size_t index;
-            for (index = 0;
-                 index < bytes_to_write && tx_buffer_index < sizeof(tx_buffer) / sizeof(tx_buffer[0]);
+            for (index = 0; index < bytes_to_write && tx_buffer_index < sizeof(tx_buffer) / sizeof(tx_buffer[0]);
                  index++)
             {
                 tx_buffer[tx_buffer_index++] = static_cast<int16_t>(buffer[index]);

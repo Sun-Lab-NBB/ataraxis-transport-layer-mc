@@ -57,8 +57,7 @@ class CRCProcessor
             const PolynomialType initial_value,
             const PolynomialType final_xor_value
         ) :
-            _initial_value(initial_value),
-            _final_xor_value(final_xor_value)
+            _initial_value(initial_value), _final_xor_value(final_xor_value)
         {
             GenerateCRCTable(polynomial);
         }
@@ -79,9 +78,7 @@ class CRCProcessor
          * the packet's data integrity and the data is intact, and '0' otherwise.
          */
         template <const bool kCheck, const size_t kBufferSize>
-        uint16_t CalculateChecksum(
-            uint8_t (&buffer)[kBufferSize]
-        )
+        uint16_t CalculateChecksum(uint8_t (&buffer)[kBufferSize])
         {
             // Initializes the checksum to the initial value of the polynomial used to generate the CRC table.
             PolynomialType crc_checksum = _initial_value;
@@ -171,7 +168,7 @@ class CRCProcessor
             static constexpr size_t kCRCBits = kCRCByteLength * 8;  // NOLINT(*-dynamic-static-initializers)
 
             // Determines the Most Significant Bit (MSB) mask based on the CRC type.
-            static constexpr PolynomialType kMSBMask =                 // NOLINT(*-dynamic-static-initializers)
+            static constexpr PolynomialType kMSBMask =             // NOLINT(*-dynamic-static-initializers)
                 static_cast<PolynomialType>(1) << (kCRCBits - 1);  // Parentheses required to avoid compiler warnings
 
             // Iterates over each possible value of a byte variable.

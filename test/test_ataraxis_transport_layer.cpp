@@ -796,7 +796,10 @@ void TestTransportLayerDataTransmissionErrors()
     // to treat these 'errors' as 'no bytes available for reading' status, which is a non-error status
     mock_port.rx_buffer[0] = 0;  // Removes the start byte
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse),
+        protocol.get_runtime_status()
+    );
     mock_port.rx_buffer[0]    = 129;  // Restores the start byte
     mock_port.rx_buffer_index = 0;    // Resets readout index back to 0
 
@@ -805,14 +808,20 @@ void TestTransportLayerDataTransmissionErrors()
     // the class expects payloads of size 5 at a minimum.
     mock_port.rx_buffer[1] = -1;  // Essentially aborts reception at the payload_size byte value.
     const bool result      = protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse), protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse),
+        protocol.get_runtime_status()
+    );
     TEST_ASSERT_FALSE(result);
     mock_port.rx_buffer[1] = static_cast<int16_t>(test_buffer[1]);
 
     // Verifies that the algorithm correctly handles a CRC checksum error (indicates corrupted packets).
     mock_port.rx_buffer[14] = 123;  // Fake CRC byte, overwrites the crc byte value found at the end of the packet
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed), protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed),
+        protocol.get_runtime_status()
+    );
     mock_port.rx_buffer[14]   = test_buffer[14];  // Restores the CRC byte value
     mock_port.rx_buffer_index = 0;                // Resets readout index back to 0
 
@@ -847,13 +856,19 @@ void TestTransportLayerDataTransmissionErrors()
     // Payload too small
     mock_port.rx_buffer[11] = 0;
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize), protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize),
+        protocol.get_runtime_status()
+    );
     mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 
     // Payload too large
     mock_port.rx_buffer[11] = 61;
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize), protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize),
+        protocol.get_runtime_status()
+    );
     mock_port.rx_buffer_index = 0;   // Resets readout index back to
     mock_port.rx_buffer[11]   = 10;  // Restores the payload_size byte value
 
@@ -869,7 +884,10 @@ void TestTransportLayerDataTransmissionErrors()
     // data until the timeout guard kicks-in to break the stale runtime.
     mock_port.rx_buffer[17] = -1;  // Sets byte 8 to an 'invalid' value to simulate not receiving valid bytes at index 7
     protocol.ReceiveData();
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketTimeoutError), protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketTimeoutError),
+        protocol.get_runtime_status()
+    );
     mock_port.rx_buffer[17]   = test_buffer[7];  // Restores the invalidated byte back to the original value
     mock_port.rx_buffer_index = 0;               // Resets readout index back to 0
 }

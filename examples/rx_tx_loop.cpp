@@ -1,70 +1,60 @@
-// This example is intended to be used together with the quickstart loop for the companion library:
-// https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart.
-// See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for more details.
-// API documentation: https://ataraxis-transport-layer-mc-api-docs.netlify.app/.
-// Authors: Ivan Kondratyev (Inkaros), Jasmine Si.
+/**
+ * @file
+ * @brief Demonstrates bidirectional serial communication using the TransportLayer class.
+ *
+ * When used with a compatible PC-side example, this script continuously exchanges data between the microcontroller
+ * and the PC. This example is intended to be used together with the quickstart loop for the companion library:
+ * https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart.
+ *
+ * @note See https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc for more details.
+ * API documentation: https://ataraxis-transport-layer-mc-api-docs.netlify.app/.
+ * Authors: Ivan Kondratyev (Inkaros), Jasmine Si.
+ */
 
-// When used with a compatible PC-side example, this script continuously exchanges the data between the microcontroller
-// and the PC.
-
-// Includes the core dependency for all Teensyduino projects.
 #include <Arduino.h>
-
-// Includes the TransportLayer header to access class API.
 #include <transport_layer.h>
 
-// Instantiates a new TransportLayer object. Most template and constructor arguments are set to use optimal default
-// values for most host microcontrollers. Consult the ReadMe and the API documentation to learn about fine-tuning the
-// TransportLayer's parameters to better match the intended use-case.
-TransportLayer<> tl_class(Serial);  // NOLINT(*-interfaces-global-init)
+/// Manages bidirectional serial communication with the connected PC.
+TransportLayer<> transport_layer(Serial);  // NOLINT(*-interfaces-global-init)
 
-void setup()
-{
-    Serial.begin(115200);  // Opens the Serial port, initiating PC communication
-}
+/// Stores the scalar value used to verify numeric serialization.
+uint32_t test_scalar = 0;
 
-// Pre-creates the objects used for the demonstration below.
-uint32_t test_scalar  = 0;
+/// Stores the array used to verify sequential byte serialization.
 uint8_t test_array[4] = {0, 0, 0, 0};
 
+/// Stores the test data used to verify struct serialization.
 struct TestStruct
 {
-        bool test_flag   = true;
-        float test_float = 6.66;
-} __attribute__((packed)) test_struct;  // Critically, the structure HAS to be packed!
+        bool test_flag   = true;  ///< Determines whether the test flag is set.
+        float test_float = 6.66;  ///< Stores the floating-point value used for serialization testing.
+} PACKED_STRUCT test_struct;
 
+/// Initializes the serial communication interface.
+void setup()
+{
+    Serial.begin(115200);
+}
+
+/// Receives, processes, and re-transmits serialized data to demonstrate the TransportLayer API.
 void loop()
 {
-    // Checks if data is available for reception.
-    if (tl_class.Available())
-    {
-        // If the data is available, carries out the reception procedure: reads the received byte-stream, parses the
-        // payload, and makes it available for reading.
-        const bool data_received = tl_class.ReceiveData();
+    if (!transport_layer.Available()) return;
 
-        // If the reception was successful, reads the data, assumed to contain serialized test objects. Note, this
-        // example is intended to be used together with the example script from the ataraxis-transport-layer-pc library.
-        if (data_received)
-        {
-            // Overwrites the memory of the placeholder objects with the received data. This gradually 'consumes' the
-            // received payload, so the data must be read in the same order as it was written to the payload.
-            tl_class.ReadData(test_scalar);
-            tl_class.ReadData(test_array);
-            tl_class.ReadData(test_struct);
+    // Reads the received byte-stream, parses the payload, and makes it available for reading.
+    const bool data_received = transport_layer.ReceiveData();
+    if (!data_received) return;
 
-            // The section below showcases sending the data to the PC. It re-transmits the same data in the same order
-            // except for the test_scalar which is changed to a new value.
-            test_scalar = 987654321;
+    // Overwrites the memory of the placeholder objects with the received data. The data must be read in the same
+    // order as it was written to the payload.
+    transport_layer.ReadData(test_scalar);
+    transport_layer.ReadData(test_array);
+    transport_layer.ReadData(test_struct);
 
-            // Writes objects to the TransportLayer's transmission buffer, staging them to be sent with the next
-            // SendData() command. Note, the objects are written in the order they will be read by the PC, as the method
-            // automatically concatenates their data into a continuous payload byte-stream.
-            tl_class.WriteData(test_scalar);
-            tl_class.WriteData(test_array);
-            tl_class.WriteData(test_struct);
-
-            // Packages and sends the contents of the transmission buffer to the PC.
-            tl_class.SendData();
-        }
-    }
+    // Re-transmits the same data in the same order except for the test_scalar which is changed to a new value.
+    test_scalar = 987654321;
+    transport_layer.WriteData(test_scalar);
+    transport_layer.WriteData(test_array);
+    transport_layer.WriteData(test_struct);
+    transport_layer.SendData();
 }

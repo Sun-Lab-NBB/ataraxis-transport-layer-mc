@@ -21,7 +21,7 @@
       "name": "Jasmine Si"
     }
   ],
-  "license": "LGPL-3.0-or-later",
+  "license": "Apache-2.0",
   "frameworks": ["arduino"],
   "platforms": ["atmelavr", "atmelsam", "teensy"],
   "headers": "transport_layer.h",

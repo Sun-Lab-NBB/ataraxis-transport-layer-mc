@@ -175,11 +175,11 @@ void TestCRCProcessorGenerateTable_CRC8()
     };
 
     // Instantiates a class object to be tested. The class constructor triggers the table generation function and fills
-    // the class-specific public instance of crc_table with calculated CRC values.
+    // the class-specific instance of _crc_table with calculated CRC values.
     const CRCProcessor<uint8_t> crc_processor(0x07, 0x00, 0x00);
 
     // Verifies that the internally created CRC table matches the external table
-    TEST_ASSERT_EQUAL_HEX8_ARRAY(test_crc_table, crc_processor.crc_table, 256);
+    TEST_ASSERT_EQUAL_HEX8_ARRAY(test_crc_table, crc_processor.get_crc_table(), 256);
 }
 
 // Tests CRCProcessor's GenerateCRCTable() for 16-bit polynomials.
@@ -213,11 +213,11 @@ void TestCRCProcessorGenerateTable_CRC16()
     };
 
     // Instantiates a class object to be tested. The class constructor triggers the table generation function and fills
-    // the class-specific public instance of crc_table with calculated CRC values.
+    // the class-specific instance of _crc_table with calculated CRC values.
     const CRCProcessor<uint16_t> crc_processor(0x1021, 0xFFFF, 0x0000);
 
     // Verifies that the internally created CRC table matches the external table
-    TEST_ASSERT_EQUAL_HEX16_ARRAY(test_crc_table, crc_processor.crc_table, 256);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(test_crc_table, crc_processor.get_crc_table(), 256);
 }
 
 // Tests CRCProcessor's GenerateCRCTable() for 32-bit polynomials.
@@ -261,11 +261,11 @@ void TestCRCProcessorGenerateTable_CRC32()
     };
 
     // Instantiates a class object to be tested. The class constructor triggers the table generation function and fills
-    // the class-specific public instance of crc_table with calculated CRC values.
+    // the class-specific instance of _crc_table with calculated CRC values.
     const CRCProcessor<uint32_t> crc_processor(0x000000AF, 0x00000000, 0x00000000);
 
     // Verifies that the internally created CRC table matches the external table
-    TEST_ASSERT_EQUAL_HEX32_ARRAY(test_crc_table, crc_processor.crc_table, 256);
+    TEST_ASSERT_EQUAL_HEX32_ARRAY(test_crc_table, crc_processor.get_crc_table(), 256);
 }
 
 // Tests CRCProcessor's CalculateCRCChecksum() method. All tests are written for
@@ -277,7 +277,7 @@ void TestCRCProcessor()
     // packet size (6).
     uint8_t test_packet[10] = {0x00, 0x04, 0x01, 0x02, 0x03, 0x04, 0x05, 0x15, 0x00, 0x00};
 
-    // Instantiates the class object to be tested, which also generates a crc_table.
+    // Instantiates the class object to be tested, which also generates the CRC lookup table.
     CRCProcessor<uint16_t> crc_processor(0x1021, 0xFFFF, 0x0000);
 
     // Runs the checksum generation function on the test packet

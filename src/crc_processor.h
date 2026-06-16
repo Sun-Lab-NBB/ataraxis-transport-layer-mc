@@ -34,7 +34,7 @@ using namespace axtlmc_shared_assets;
  * uint16_t, and uint32_t.
  */
 template <typename PolynomialType>
-class CRCProcessor
+class CRCProcessor final
 {
         // Prevents passing unsupported data types as the PolynomialType parameter.
         static_assert(

@@ -1,5 +1,6 @@
 /**
  * @file
+ *
  * @brief Provides the StreamMock class used to simulate a Serial Stream interface for testing the TransportLayer
  * class.
  */
@@ -70,7 +71,7 @@ class StreamMock final : public Stream
                 return -1;
             }
 
-            const int value = rx_buffer[rx_buffer_index];
+            const int16_t value = rx_buffer[rx_buffer_index];
             rx_buffer_index++;
             return value;
         }
@@ -87,7 +88,6 @@ class StreamMock final : public Stream
          * @param length the number of bytes to read.
          * @returns the number of bytes read and written to the input buffer or 0 if no valid data was read.
          */
-        // ReSharper disable once CppHidingFunction
         size_t readBytes(uint8_t* buffer, const size_t length)
         {
             size_t bytes_read = 0;

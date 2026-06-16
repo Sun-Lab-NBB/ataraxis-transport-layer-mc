@@ -1,5 +1,6 @@
 /**
  * @file
+ *
  * @brief Provides the TransportLayer class that exposes methods for sending and receiving serialized data
  * over the USB and UART interfaces.
  *
@@ -147,8 +148,8 @@ class TransportLayer final
             _transmission_buffer {},
             _reception_buffer {}
         {
-            // Sets the start_byte placeholder to the actual start byte value.
-            _transmission_buffer[0] = kBufferLayout::kStartByte;
+            // Seeds the transmission buffer's first byte with the protocol start byte value.
+            _transmission_buffer[kBufferLayout::kStartByteIndex] = kBufferLayout::kStartByte;
         }
 
         /**
@@ -167,15 +168,15 @@ class TransportLayer final
         /// Resets the instance's transmission buffer.
         void ResetTransmissionBuffer()
         {
-            _transmission_buffer[kBufferLayout::kPayloadSizeIndex]  = 0;  // Payload Size
-            _transmission_buffer[kBufferLayout::kOverheadByteIndex] = 0;  // Overhead Byte
+            _transmission_buffer[kBufferLayout::kPayloadSizeIndex]  = 0;
+            _transmission_buffer[kBufferLayout::kOverheadByteIndex] = 0;
         }
 
         /// Resets the instance's reception buffer.
         void ResetReceptionBuffer()
         {
-            _reception_buffer[kBufferLayout::kPayloadSizeIndex]  = 0;  // Payload Size
-            _reception_buffer[kBufferLayout::kOverheadByteIndex] = 0;  // Overhead Byte
+            _reception_buffer[kBufferLayout::kPayloadSizeIndex]  = 0;
+            _reception_buffer[kBufferLayout::kOverheadByteIndex] = 0;
             _consumed_payload_bytes                              = 0;  // Also resets the consumed payload bytes counter
         }
 
@@ -239,8 +240,8 @@ class TransportLayer final
                 return false;
             }
 
-            // Copies the payload from the transmission buffer to the reception buffer. Note, this excludes(!) most
-            // metadata and the crc checksum postamble.
+            // Copies the payload from the transmission buffer to the reception buffer. Note that this excludes most
+            // metadata and the CRC checksum postamble.
             memcpy(
                 &_reception_buffer[kBufferLayout::kPayloadStartIndex],
                 &_transmission_buffer[kBufferLayout::kPayloadStartIndex],
@@ -498,9 +499,6 @@ class TransportLayer final
         /// The reference to the Stream class instance that works with the communication interface.
         Stream& _port;
 
-        /// The COBSProcessor instance used to encode and decode packets using the COBS scheme.
-        COBSProcessor _cobs_processor;
-
         /// The CRCProcessor instance used to calculate CRC checksums for the incoming and outgoing data packets.
         CRCProcessor<PolynomialType> _crc_processor;
 
@@ -524,7 +522,7 @@ class TransportLayer final
         uint16_t ConstructPacket()
         {
             // Encodes the payload into a transmittable packet in-place using the COBS algorithm.
-            _cobs_processor.EncodePayload(_transmission_buffer);
+            COBSProcessor::EncodePayload(_transmission_buffer);
 
             // Calculates the CRC checksum for the encoded packet and writes it to the postamble region.
             const uint16_t combined_size = _crc_processor.template CalculateChecksum<false>(_transmission_buffer);
@@ -677,7 +675,7 @@ class TransportLayer final
             }
 
             // Decodes the payload from the packet using the COBS algorithm.
-            if (_cobs_processor.DecodePayload(_reception_buffer) == 0)
+            if (COBSProcessor::DecodePayload(_reception_buffer) == 0)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kDecodingFailed);
                 return false;

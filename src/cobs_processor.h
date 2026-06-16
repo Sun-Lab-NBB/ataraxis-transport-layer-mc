@@ -43,7 +43,7 @@ class COBSProcessor final
         template <const size_t kBufferSize>
         static uint16_t EncodePayload(uint8_t (&buffer)[kBufferSize])
         {
-            // Extracts the payload size from the payload_size variable.
+            // Extracts the payload size from the buffer's payload-size byte.
             const uint8_t payload_size = buffer[kBufferLayout::kPayloadSizeIndex];
 
             // Determines start and end indices for the loop below based on the requested payload_size. Transforms the
@@ -53,24 +53,24 @@ class COBSProcessor final
             // Since payload_end_index is inclusive, the delimiter index immediately follows the value of that variable.
             const uint16_t delimiter_index = payload_end_index + 1;
 
-            // Appends the delimiter_byte_value to the end of the payload buffer.
+            // Appends the delimiter byte to the end of the payload buffer.
             buffer[delimiter_index] = kBufferLayout::kDelimiterByte;
 
-            // Tracks discovered delimiter_byte_value instance indices during the loop below to support iterative COBS
+            // Tracks the discovered delimiter byte indices during the loop below to support iterative COBS
             // encoding.
             uint16_t last_delimiter_index = 0;
 
-            // Loops over the requested payload size in reverse and encodes all instances of delimiter_byte using the
-            // COBS scheme.
+            // Loops over the requested payload size in reverse and encodes all instances of the delimiter byte
+            // using the COBS scheme.
             for (uint16_t index = payload_end_index; index >= kBufferLayout::kPayloadStartIndex; --index)
             {
                 if (buffer[index] == kBufferLayout::kDelimiterByte)
                 {
                     if (last_delimiter_index == 0)
                     {
-                        // If delimiter_byte_value is encountered and last_delimiter_index is still set to the default
+                        // If a delimiter byte is encountered and last_delimiter_index is still set to the default
                         // value of 0, computes the distance from the current index to the end of the payload + 1,
-                        // which is the distance to the delimiter byte value appended to the end of the payload.
+                        // which is the distance to the delimiter byte appended to the end of the payload.
                         buffer[index] = delimiter_index - index;
                     }
                     else
@@ -86,8 +86,8 @@ class COBSProcessor final
                 }
             }
 
-            // Once all instances of delimiter_byte_value have been encoded, sets the overhead byte (index 2 of buffer)
-            // to store the distance to the closest delimiter_byte_value instance.
+            // Once all delimiter bytes have been encoded, sets the overhead byte (index 2 of buffer) to store the
+            // distance to the closest encoded delimiter byte.
             if (last_delimiter_index != 0)
             {
                 // Converts the absolute index of the closest encoded delimiter into its distance from the overhead
@@ -130,14 +130,14 @@ class COBSProcessor final
             // Tracks the index inside the packet buffer read at each decoding cycle iteration.
             uint16_t read_index = kBufferLayout::kOverheadByteIndex;
 
-            // Tracks distance to the next delimiter_byte_value. Initializes to the value obtained from reading the
-            // overhead byte, which points to the first (or only) occurrence of the delimiter_byte_value in the packet.
+            // Tracks distance to the next delimiter byte. Initializes to the value obtained from reading the
+            // overhead byte, which points to the first (or only) occurrence of the delimiter byte in the packet.
             auto next_index = static_cast<uint16_t>(buffer[read_index]);
 
             // Resets the overhead byte to 0 to indicate that the buffer has been through a decoding cycle
             buffer[read_index] = 0;
 
-            // Increments the read_index to point either to the next encoded value or to the delimiter_byte_value
+            // Increments the read_index to point either to the next encoded value or to the delimiter byte
             // found at the end of the packet.
             read_index += next_index;
 
@@ -163,7 +163,7 @@ class COBSProcessor final
                 // value of the encoded variable
                 next_index = buffer[read_index];
 
-                // Restores the original delimiter_byte_value (decodes the variable value)
+                // Restores the original delimiter byte (decodes the variable value)
                 buffer[read_index] = kBufferLayout::kDelimiterByte;
 
                 // Jumps to the next encoded delimiter byte's position by distance aggregation.

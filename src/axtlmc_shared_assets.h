@@ -1,5 +1,6 @@
 /**
  * @file
+ *
  * @brief Provides the assets shared between all library components.
  */
 

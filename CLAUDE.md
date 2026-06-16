@@ -26,6 +26,23 @@ You MUST invoke the appropriate style skill before performing ANY of the followi
 Each skill contains a verification checklist that you MUST complete before submitting any work. Failure to invoke the
 appropriate skill results in style violations.
 
+## Available skills
+
+| Skill                    | Description                                                                    |
+|--------------------------|--------------------------------------------------------------------------------|
+| `/explore-codebase`      | Perform in-depth codebase exploration at session start                         |
+| `/cpp-style`             | Apply Ataraxis framework C++ coding conventions (REQUIRED for all C++ changes) |
+| `/readme-style`          | Apply Ataraxis framework README conventions (REQUIRED for README changes)      |
+| `/api-docs`              | Apply Ataraxis framework API documentation conventions                         |
+| `/tox-config`            | Apply Ataraxis framework tox.ini configuration conventions                     |
+| `/project-layout`        | Apply Ataraxis framework project directory structure conventions               |
+| `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions             |
+| `/audit-facts`           | Audit documentation files for factual accuracy against the source code         |
+| `/audit-style`           | Audit source, configuration, and documentation files for style compliance      |
+| `/commit`                | Draft Ataraxis framework style-compliant git commit messages                   |
+| `/pr`                    | Draft Ataraxis framework style-compliant pull request summaries                |
+| `/release`               | Draft Ataraxis framework style-compliant release notes                         |
+
 ## Companion library synchronization
 
 This library (`ataraxis-transport-layer-mc`) and its Python counterpart (`ataraxis-transport-layer-pc`) implement the
@@ -63,23 +80,6 @@ in `ataraxis-transport-layer-pc`, and vice versa.
 - Build system, documentation, and PlatformIO configuration
 - Arduino/Teensy-specific timing and `elapsedMillis` usage
 
-## Available skills
-
-| Skill                    | Description                                                                    |
-|--------------------------|--------------------------------------------------------------------------------|
-| `/explore-codebase`      | Perform in-depth codebase exploration at session start                         |
-| `/cpp-style`             | Apply Ataraxis framework C++ coding conventions (REQUIRED for all C++ changes) |
-| `/readme-style`          | Apply Ataraxis framework README conventions (REQUIRED for README changes)      |
-| `/api-docs`              | Apply Ataraxis framework API documentation conventions                         |
-| `/tox-config`            | Apply Ataraxis framework tox.ini configuration conventions                     |
-| `/project-layout`        | Apply Ataraxis framework project directory structure conventions               |
-| `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions             |
-| `/audit-facts`           | Audit documentation files for factual accuracy against the source code         |
-| `/audit-style`           | Audit source, configuration, and documentation files for style compliance      |
-| `/commit`                | Draft Ataraxis framework style-compliant git commit messages                   |
-| `/pr`                    | Draft Ataraxis framework style-compliant pull request summaries                |
-| `/release`               | Draft Ataraxis framework style-compliant release notes                         |
-
 ## Project context
 
 This is **ataraxis-transport-layer-mc**, a header-only C++17 library for Arduino and Teensy microcontrollers that
@@ -115,7 +115,7 @@ applications with microsecond-level communication speeds, optimized for the
 
 ### Packet format
 
-```
+```text
 [START BYTE (129)] [PAYLOAD SIZE] [COBS OVERHEAD] [PAYLOAD (1-254 bytes)] [DELIMITER (0)] [CRC CHECKSUM]
 ```
 

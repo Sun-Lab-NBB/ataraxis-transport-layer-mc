@@ -1,5 +1,6 @@
 /**
  * @file
+ *
  * @brief Provides the assets shared between all library components.
  */
 
@@ -39,7 +40,7 @@ namespace axtlmc_shared_assets
         kPayloadSizeByteNotFound     = 14,  ///< Payload size byte was not found in the incoming stream.
         kInvalidPayloadSize          = 15,  ///< Received payload size is not valid.
         kPacketTimeoutError          = 16,  ///< Packet parsing failed due to stalling (reception timeout).
-        kNoBytesToParse              = 17,  ///< Stream class reception buffer had no packet bytes to parse.
+        kNoBytesToParse              = 17,  ///< No parseable packet was found in the Stream reception buffer.
         kPacketParsed                = 18,  ///< Packet was successfully parsed.
         kCRCCheckFailed              = 19,  ///< CRC check failed, the incoming packet is corrupted.
         kPacketReceived              = 20,  ///< Packet was successfully received.
@@ -64,8 +65,8 @@ namespace axtlmc_shared_assets
     {
             static constexpr uint8_t kMinimumPayloadSize = 1;    ///< Prevents sending or receiving empty payloads.
             static constexpr uint8_t kMaximumPayloadSize = 254;  ///< Caps the maximum size per COBS specification.
-            static constexpr uint8_t kMinimumPacketSize  = 3;    ///< The smallest valid packet in the protocol.
-            static constexpr uint16_t kMaximumPacketSize = 256;  ///< The largest valid packet in the protocol.
+            static constexpr uint8_t kMinimumPacketSize  = 3;    ///< The smallest valid COBS-encoded packet, in bytes.
+            static constexpr uint16_t kMaximumPacketSize = 256;  ///< The largest valid COBS-encoded packet, in bytes.
             static constexpr uint8_t kDelimiterByte      = 0;    ///< The value used as the encoded packet delimiter.
             static constexpr uint8_t kStartByte          = 129;  ///< The value used as the packet start byte.
             static constexpr uint8_t kStartByteIndex     = 0;    ///< The index of the start byte value.
@@ -74,8 +75,8 @@ namespace axtlmc_shared_assets
             static constexpr uint8_t kPayloadStartIndex  = 3;    ///< The index of the first payload's data byte.
     };
 
-    // Reimplements standard library type traits for compatibility with Arduino Mega boards, which lack the 'cstring'
-    // header available on Teensy. Mirrors std:: counterparts to serve as drop-in replacements.
+    // Reimplements standard library type traits for compatibility with Arduino Mega boards, which lack the
+    // '<type_traits>' header available on Teensy. Mirrors std:: counterparts to serve as drop-in replacements.
 
     /**
      * @brief Determines whether two types are the same.

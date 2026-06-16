@@ -29,14 +29,13 @@ void tearDown()
 void test_cobs_processor_encode_decode()
 {
     // Prepares test assets
-    uint8_t payload_buffer[258];                         // Initializes test buffer
-    memset(payload_buffer, 22, sizeof(payload_buffer));  // Sets all values to 22
-    COBSProcessor cobs_processor;                        // Instantiates the class object to be tested
+    uint8_t payload_buffer[258];
+    memset(payload_buffer, 22, sizeof(payload_buffer));
 
     // Creates a test payload using the format: start [0], payload_size [1], overhead [2], payload [3 to 12] (10 total),
     // delimiter [13]
     const uint8_t initial_packet[14] = {129, 10, 0, 1, 0, 3, 0, 0, 0, 7, 0, 9, 10, 22};
-    memcpy(payload_buffer, initial_packet, sizeof(initial_packet));  // Copies the payload into the buffer
+    memcpy(payload_buffer, initial_packet, sizeof(initial_packet));
 
     // Expected packet after encoding, used to test the encoding result
     const uint8_t encoded_packet[14] = {129, 10, 2, 1, 2, 3, 1, 1, 2, 7, 3, 9, 10, 0};
@@ -53,7 +52,7 @@ void test_cobs_processor_encode_decode()
     TEST_ASSERT_EQUAL_UINT8_ARRAY(initial_packet, payload_buffer, sizeof(initial_packet));
 
     // Encodes test payload
-    const uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer);
+    const uint16_t encoded_size = COBSProcessor::EncodePayload(payload_buffer);
 
     // Verifies that encoding returned expected payload size (10) + overhead + delimiter (== 12, packet size)
     TEST_ASSERT_EQUAL_UINT16(packet_size, encoded_size);
@@ -62,7 +61,7 @@ void test_cobs_processor_encode_decode()
     TEST_ASSERT_EQUAL_UINT8_ARRAY(encoded_packet, payload_buffer, sizeof(encoded_packet));
 
     // Decodes test payload
-    const uint16_t decoded_size = cobs_processor.DecodePayload(payload_buffer);
+    const uint16_t decoded_size = COBSProcessor::DecodePayload(payload_buffer);
 
     // Checks that size correctly equals to packet_size - 2 (10, payload_size).
     TEST_ASSERT_EQUAL_UINT16(payload_size, decoded_size);
@@ -81,12 +80,9 @@ void test_cobs_processor_encode_decode()
     }
 }
 
-/// Verifies error handling for COBSProcessor EncodePayload() and DecodePayload() methods.
+/// Verifies error handling for COBSProcessor DecodePayload() and boundary-size handling for EncodePayload().
 void test_cobs_processor_errors()
 {
-    // Instantiates the class object to be tested
-    COBSProcessor cobs_processor;
-
     // Generates the test buffer and sets every value inside to 22
     uint8_t payload_buffer[258];
     memset(payload_buffer, 22, sizeof(payload_buffer));
@@ -94,20 +90,20 @@ void test_cobs_processor_errors()
 
     // Verifies that payloads with minimal size are encoded correctly
     payload_buffer[1] = static_cast<uint8_t>(kBufferLayout::kMinimumPayloadSize);
-    uint16_t result   = cobs_processor.EncodePayload(payload_buffer);
+    uint16_t result   = COBSProcessor::EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kBufferLayout::kMinimumPacketSize), result);
 
     // Verifies packets with minimal size are decoded correctly. Uses the packet encoded above.
-    result = cobs_processor.DecodePayload(payload_buffer);
+    result = COBSProcessor::DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kBufferLayout::kMinimumPayloadSize), result);
 
     // Verifies that payloads with maximal size are encoded correctly
     payload_buffer[1] = static_cast<uint8_t>(kBufferLayout::kMaximumPayloadSize);
-    result            = cobs_processor.EncodePayload(payload_buffer);
+    result            = COBSProcessor::EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kBufferLayout::kMaximumPacketSize), result);
 
     // Verifies that packets with maximal size are decoded correctly. Uses the packet encoded above.
-    result = cobs_processor.DecodePayload(payload_buffer);
+    result = COBSProcessor::DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kBufferLayout::kMaximumPayloadSize), result);
 
     // Tests decoder payload (in)validation error codes, issued whenever the payload does not conform to the format
@@ -124,16 +120,16 @@ void test_cobs_processor_errors()
     payload_buffer[5]  = 0;
     payload_buffer[10] = 0;
 
-    // Encodes the payload of size 15, inserting a delimiter (0) byte at index 16, generating a packet of size 17
+    // Encodes the payload of size 15, inserting a delimiter (0) byte at index 18, generating a packet of size 17
     payload_buffer[1]           = 15;
-    const uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer);
+    const uint16_t encoded_size = COBSProcessor::EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(17, encoded_size);
 
     // Decodes the packet of size 13 (17-4), which is a valid size. The process should abort before the delimiter at
     // index 16 is reached with the appropriate error code. Tests both the error code and that the decoder that uses a
     // while loop exits the loop as expected instead of overwriting the 'out-of-limits' buffer memory.
     payload_buffer[1] = 13;
-    result            = cobs_processor.DecodePayload(payload_buffer);
+    result            = COBSProcessor::DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(0, result);
 
     // Overwrites encoded jump variable at index 10 with the actual delimiter value. This should trigger the decoder
@@ -147,7 +143,7 @@ void test_cobs_processor_errors()
     payload_buffer[1] = 15;  // Also restores the payload_size to the proper size
 
     // Tests delimiter found too early error code
-    result = cobs_processor.DecodePayload(payload_buffer);
+    result = COBSProcessor::DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(0, result);
 }
 
@@ -156,7 +152,7 @@ void test_crc_processor_generate_table_crc8()
 {
     // CRC-8 Table (Polynomial 0x07)
     // Make sure your controller has enough memory for the tested and generated tables. Here, the controller needs to
-    // have 256 bytes of memory to store both tables, which should be compatible with most existing boards, including
+    // have 512 bytes of memory to store both tables, which should be compatible with most existing boards, including
     // Arduino Uno.
     constexpr uint8_t test_crc_table[256] = {
         0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15, 0x38, 0x3F, 0x36, 0x31, 0x24, 0x23, 0x2A, 0x2D, 0x70, 0x77,
@@ -352,7 +348,8 @@ void test_stream_mock()
         TEST_ASSERT_EQUAL_INT16(-1, stream.tx_buffer[i]);
     }
 
-    // Also verifies that the tx_index was reset to 0
+    // Also verifies that the rx_index and tx_index were reset to 0
+    TEST_ASSERT_EQUAL_size_t(0, stream.rx_buffer_index);
     TEST_ASSERT_EQUAL_size_t(0, stream.tx_buffer_index);
 
     // Explicitly overwrites both buffers with test data
@@ -451,8 +448,8 @@ void test_transport_layer_buffer_manipulation()
     TEST_ASSERT_EQUAL_UINT16(51, rx_buffer_size);  // Payload +  COBS (2) + Preamble (2) + Postamble (2)
 
     // Initializes the test and expected buffers to 0. Uses two buffers due to using different sizes for reception and
-    // transmission buffers. Test buffers are used to expose the contents of the STP class internal buffers, and expected
-    // buffers are used to verify the state of the buffer contents extracted via test buffers.
+    // transmission buffers. Test buffers expose the contents of the TransportLayer class internal buffers, and
+    // expected buffers verify the state of the buffer contents extracted via test buffers.
     uint8_t expected_tx_buffer[tx_buffer_size] = {};
     uint8_t expected_rx_buffer[rx_buffer_size] = {};
     uint8_t test_tx_buffer[tx_buffer_size]     = {};
@@ -510,7 +507,10 @@ void test_transport_layer_buffer_manipulation()
     TEST_ASSERT_TRUE(status);
 
     // Verifies that the buffer status matches the expected status (bytes successfully written)
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kObjectWrittenToBuffer),
+        protocol.get_runtime_status()
+    );
 
     // Verifies that bytes' tracker matches the value expected given the byte-size of all written objects
     // Combines the sizes (in bytes) of all test objects to come up with the overall payload size
@@ -582,7 +582,10 @@ void test_transport_layer_buffer_manipulation()
     TEST_ASSERT_TRUE(status);
 
     // Verifies that the buffer status matches the expected status (bytes successfully read)
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kObjectReadFromBuffer),
+        protocol.get_runtime_status()
+    );
 
     // Verifies that the objects read from the buffer are the same as the original objects:
     // Structure (tests field-wise)
@@ -619,12 +622,18 @@ void test_transport_layer_buffer_manipulation_errors()
 
     // Verifies that writing a variable with the same size as the maximum payload size works as expected
     protocol.WriteData(test_array);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectWrittenToBuffer, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kObjectWrittenToBuffer),
+        protocol.get_runtime_status()
+    );
 
     // Verifies that attempting to write the variable to an index beyond the payload range results in an error
     bool status = protocol.WriteData(test_array);
     TEST_ASSERT_FALSE(status);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kWriteObjectBufferError, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError),
+        protocol.get_runtime_status()
+    );
 
     // Copies the contents of the _transmission_buffer to the _reception_buffer to test reception buffer manipulation
     // (reading)
@@ -633,12 +642,18 @@ void test_transport_layer_buffer_manipulation_errors()
 
     // Verifies that reading from the end of the payload functions as expected
     protocol.ReadData(test_array);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kObjectReadFromBuffer, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kObjectReadFromBuffer),
+        protocol.get_runtime_status()
+    );
 
     // Verifies that attempting to read from an index beyond the payload range results in an error
     status = protocol.ReadData(test_array);
     TEST_ASSERT_FALSE(status);
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kReadObjectBufferError, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kReadObjectBufferError),
+        protocol.get_runtime_status()
+    );
 }
 
 /// Verifies SendData() and ReceiveData() methods of the TransportLayer class and all supporting sub-methods.
@@ -651,8 +666,7 @@ void test_transport_layer_data_transmission()
     // to test multibyte CRC handling.
     TransportLayer<uint16_t> protocol(mock_port, 0x1021, 0xFFFF, 0x0000);
 
-    // Instantiates separate instances of encoder classes used to verify processing results
-    COBSProcessor cobs_class;
+    // Instantiates a separate CRC encoder instance used to verify processing results.
     // CRC settings must match those used by the TransportLayer instance.
     auto crc_class = CRCProcessor<uint16_t>(0x1021, 0xFFFF, 0x0000);
 
@@ -666,7 +680,7 @@ void test_transport_layer_data_transmission()
     protocol.SendData();
 
     // Verifies that the data has been successfully sent to the Stream buffer
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kPacketSent, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
 
     // Manually verifies the contents of the StreamMock class tx_buffer to confirm that the data has been
     // processed correctly:
@@ -678,7 +692,7 @@ void test_transport_layer_data_transmission()
     // Simulates COBS encoding the buffer. Note, assumes COBSProcessor methods have been tested before running this
     // test. Specifically, targets the 10-value payload starting from index 3. Uses the same delimiter byte value as
     // does the serial protocol class
-    cobs_class.EncodePayload(buffer_array);
+    COBSProcessor::EncodePayload(buffer_array);
 
     // Calculates the CRC for the COBS-encoded buffer. Also assumes that the CRCProcessor methods have been tested
     // before running this test. The CRC calculation includes the overhead byte, the encoded payload and the inserted
@@ -698,14 +712,17 @@ void test_transport_layer_data_transmission()
 
     // Ensures that the overhead byte copied to the rx_buffer is not zero (that the packet is COBS-encoded). This check
     // has to be true for the decoding to work as expected and not throw a 'packet already decoded' error.
-    TEST_ASSERT_NOT_EQUAL_UINT16(mock_port.rx_buffer[1], 0);
+    TEST_ASSERT_NOT_EQUAL_UINT16(mock_port.rx_buffer[2], 0);
 
     // Receives the data stored in the StreamMock reception buffer. If all steps of this process succeed, the method
     // returns 'true'.
     const bool receive_status = protocol.ReceiveData();
 
     // Verifies that the data has been successfully received from the StreamMock rx buffer
-    TEST_ASSERT_EQUAL_UINT8(kTransportStatusCodes::kPacketReceived, protocol.get_runtime_status());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
     TEST_ASSERT_TRUE(receive_status);
 
     // Verifies that the internal class _reception_buffer tracker was set to the expected payload size
@@ -715,7 +732,7 @@ void test_transport_layer_data_transmission()
     // the forward-conversion since there is no need to generate the CRC value or simulate COBS encoding here. This
     // assumes these methods have been fully tested before calling this test
     uint8_t decoded_array[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // Placeholder-initialized
-    protocol.ReadData(decoded_array);                            // Reads the data from _transmission_buffer
+    protocol.ReadData(decoded_array);                            // Reads the data from _reception_buffer
 
     // Verifies that the decoded payload fully matches the test payload array contents
     TEST_ASSERT_EQUAL_UINT8_ARRAY(test_array, decoded_array, sizeof(test_array));
@@ -726,16 +743,16 @@ void test_transport_layer_data_transmission()
     bool data_available = protocol.Available();
     TEST_ASSERT_TRUE(data_available);
 
-    // Verifies that ResetReceptionBuffer() method works as expected. This method resets the overhead and payload_size
-    // variables of the buffer. Since the overhead is already reset by the decoder method, only the latter action is
-    // evaluated below.
+    // Verifies that ResetReceptionBuffer() method works as expected. This method resets the overhead, payload_size,
+    // and consumed-payload-bytes variables of the buffer. Since the overhead is already reset by the decoder method,
+    // only the payload_size action is evaluated below.
     protocol.ResetReceptionBuffer();
     TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_reception_buffer());
 
     // Also verifies ResetTransmissionBuffer() method, which works the same as the ResetReceptionBuffer() method, but
     // specifically targets the _transmission_buffer
     protocol.ResetTransmissionBuffer();
-    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_reception_buffer());
+    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_transmission_buffer());
 
     // Fully resets the mock rx_buffer with -1, which is used as a stand-in for no available data. This is to test the
     // 'false' return portion of the Available() method.
@@ -792,9 +809,9 @@ void test_transport_layer_data_transmission_errors()
     mock_port.rx_buffer[0]    = 129;  // Restores the start byte
     mock_port.rx_buffer_index = 0;    // Resets readout index back to 0
 
-    // Verifies that when not enough bytes are available to parse (according to the minimum_expected_payload_size)
-    // argument, the algorithm correctly aborts parsing with kNoBytesToParseFromBuffer code. Recall that for this test,
-    // the class expects payloads of size 5 at a minimum.
+    // Verifies that when not enough bytes are available to parse, the algorithm correctly aborts parsing with the
+    // kNoBytesToParse code. The abort triggers when Available() does not find at least kMinimumPacketSize buffered
+    // bytes.
     mock_port.rx_buffer[1] = -1;  // Essentially aborts reception at the payload_size byte value.
     const bool result      = protocol.ReceiveData();
     TEST_ASSERT_EQUAL_UINT8(
@@ -839,8 +856,8 @@ void test_transport_layer_data_transmission_errors()
     mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 
     // Verifies that the algorithm correctly handles invalid payload_size byte errors. Tests payload_size byte
-    // being too small (0) and too large (61). Note, these sizes depend on the template maximum_payload_size and
-    // constructor minimum_expected_payload_size parameters.
+    // being too small (0) and too large (61). Note, these sizes depend on the template kMaximumReceivedPayloadSize
+    // parameter and the fixed kMinimumPayloadSize constant.
 
     // Payload too small
     mock_port.rx_buffer[11] = 0;
@@ -858,7 +875,7 @@ void test_transport_layer_data_transmission_errors()
         static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize),
         protocol.get_runtime_status()
     );
-    mock_port.rx_buffer_index = 0;   // Resets readout index back to
+    mock_port.rx_buffer_index = 0;   // Resets readout index back to 0
     mock_port.rx_buffer[11]   = 10;  // Restores the payload_size byte value
 
     // Sets the entire rx_buffer to valid non-delimiter byte-values for the test below to work, as it has to consume
@@ -1020,11 +1037,11 @@ int RunUnityTests()
     // Stream Mock
     RUN_TEST(test_stream_mock);
 
-    // Serial Transfer Protocol Write / Read Data
+    // TransportLayer Write / Read Data
     RUN_TEST(test_transport_layer_buffer_manipulation);
     RUN_TEST(test_transport_layer_buffer_manipulation_errors);
 
-    // Serial Transfer Protocol Send / Receive Data
+    // TransportLayer Send / Receive Data
     RUN_TEST(test_transport_layer_data_transmission);
     RUN_TEST(test_transport_layer_data_transmission_errors);
     RUN_TEST(test_transport_layer_delimiter_not_found_error);

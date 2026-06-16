@@ -1,5 +1,6 @@
 /**
  * @file
+ *
  * @brief Demonstrates bidirectional serial communication using the TransportLayer class.
  *
  * When used with a compatible PC-side example, this script continuously exchanges data between the microcontroller

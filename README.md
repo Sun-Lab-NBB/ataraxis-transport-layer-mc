@@ -51,7 +51,7 @@ ___
 
 - An IDE or Framework capable of uploading microcontroller software that supports 
   [Platformio](https://platformio.org/install). This library is explicitly designed to be uploaded via Platformio and 
-  will likely not work with any other IDE or Framework.
+  is unlikely to work with any other IDE or Framework.
 
 ***Note,*** developers should see the [Developers](#developers) section for information on installing additional
 development dependencies.
@@ -66,15 +66,16 @@ ___
 
 1. Download this repository to the local machine using the preferred method, such as git-cloning. Use one of the
    [stable releases](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/tags).
-2. Unpack the downloaded tarball and move all 'src' contents into the appropriate destination 
-   ('include,' 'src,' or 'libs') directory of the project that needs to use this library.
-3. Add ```#include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
+2. Unpack the downloaded tarball and move the 'src' header files (do not copy 'src/main.cpp', which is a
+   development-only entry point) into the appropriate destination ('include,' 'src,' or 'libs') directory of the
+   project that needs to use this library.
+3. Add `#include <transport_layer.h>` to the top of the file(s) that need to access the library API.
 
 ### Platformio
 
 1. Navigate to the project’s platformio.ini file and add the following line to the target environment specification:
-   ```lib_deps = inkaros/ataraxis-transport-layer-mc@^3.0.0```.
-2. Add ```#include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
+   `lib_deps = inkaros/ataraxis-transport-layer-mc@^3.0.0`.
+2. Add `#include <transport_layer.h>` to the top of the file(s) that need to access the library API.
 
 ___
 
@@ -101,7 +102,7 @@ selected at class instantiation (8-bit, 16-bit, or 32-bit).
 
 ***Note,*** TransportLayer’s WriteData() and ReadData() methods ***exclusively*** work with the **PAYLOAD** region of 
 each data buffer. End users can safely ignore all packet-related information and focus on working with transmitted and
-received serialized payloads, as it is impossible to access and manipulate packet metadata via the public API.
+received serialized payloads, since packet metadata cannot be accessed or manipulated via the public API.
 
 #### Quickstart
 This minimal example demonstrates how to use this library to send and receive data. It is designed to be used together
@@ -172,16 +173,15 @@ void loop()
 }
 ```
 
-#### Key Methods
-
-##### Sending Data
+#### Sending Data
 There are two key methods associated with sending data to the PC:
 - The `WriteData()` method serializes the input object and writes the resultant byte sequence to the 
   transmission buffer’s payload region. Each call appends the data to the end of the payload already stored in the 
   transmission buffer.
-- The `SendData()` method encodes the payload stored in the transmission buffer into a packet using COBS, calculates 
-  and adds the CRC checksum to the encoded packet, and transmits the packet to the PC. The method requires that at 
-  least one byte of data is written to the staging buffer via the WriteData() method before it can be sent to the PC.
+- The `SendData()` method encodes the payload stored in the transmission buffer into a packet using COBS, calculates
+  and adds the CRC checksum to the encoded packet, and transmits the packet to the PC. At least one byte of data
+  should be written to the transmission buffer via the WriteData() method before SendData() is called; transmitting an
+  empty payload produces a packet that the receiver rejects.
 
 The example below showcases the sequence of steps necessary to send the data to the PC and assumes TransportLayer 
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example:
@@ -252,11 +252,11 @@ This section provides installation, dependency, and build-system instructions fo
 1. Install [Platformio](https://platformio.org/install/integration) either as a standalone IDE or as an IDE plugin.
 2. Download this repository to the local machine using the preferred method, such as git-cloning.
 3. If the downloaded distribution is stored as a compressed archive, unpack it using the appropriate decompression tool.
-4. ```cd``` to the root directory of the prepared project distribution.
-5. Run ```pio project init ``` to initialize the project on the local machine. See 
+4. `cd` to the root directory of the prepared project distribution.
+5. Run `pio project init` to initialize the project on the local machine. See 
    [Platformio API documentation](https://docs.platformio.org/en/latest/core/userguide/project/cmd_init.html) for 
    more details on initializing and configuring projects with platformio.
-6. If using an IDE that does not natively support platformio integration, call the ```pio project metadata``` command 
+6. If using an IDE that does not natively support platformio integration, call the `pio project metadata` command 
    to generate the metadata to integrate the project with the IDE. Note; most mainstream IDEs do not require or benefit
    from this step.
 
@@ -277,7 +277,7 @@ Unlike other Ataraxis libraries, the automation for this library is primarily pr
 [PlatformIO's command line interface](https://docs.platformio.org/en/latest/core/userguide/index.html). 
 Additionally, this project uses [tox](https://tox.wiki/en/latest/user_guide.html) for certain automation tasks not 
 directly covered by platformio, such as API documentation generation. Check the [tox.ini file](tox.ini) for details 
-about the available pipelines and their implementation. Alternatively, call ```tox list``` from the root directory of 
+about the available pipelines and their implementation. Alternatively, call `tox list` from the root directory of 
 the project to see the list of available tasks.
 
 ***Note,*** all pull requests for this project have to successfully complete the `tox`, `pio check`, and `pio test`

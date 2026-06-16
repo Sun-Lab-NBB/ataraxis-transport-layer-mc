@@ -19,11 +19,29 @@ You MUST invoke the appropriate style skill before performing ANY of the followi
 | Writing or modifying C++ code          | `/cpp-style`       |
 | Writing or modifying README files      | `/readme-style`    |
 | Writing or modifying Sphinx docs files | `/api-docs`        |
+| Writing or modifying tox.ini           | `/tox-config`      |
 | Writing git commit messages            | `/commit`          |
 | Writing or modifying skill files       | `/skill-design`    |
 
 Each skill contains a verification checklist that you MUST complete before submitting any work. Failure to invoke the
 appropriate skill results in style violations.
+
+## Available skills
+
+| Skill                    | Description                                                                    |
+|--------------------------|--------------------------------------------------------------------------------|
+| `/explore-codebase`      | Perform in-depth codebase exploration at session start                         |
+| `/cpp-style`             | Apply Ataraxis framework C++ coding conventions (REQUIRED for all C++ changes) |
+| `/readme-style`          | Apply Ataraxis framework README conventions (REQUIRED for README changes)      |
+| `/api-docs`              | Apply Ataraxis framework API documentation conventions                         |
+| `/tox-config`            | Apply Ataraxis framework tox.ini configuration conventions                     |
+| `/project-layout`        | Apply Ataraxis framework project directory structure conventions               |
+| `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions             |
+| `/audit-facts`           | Audit documentation files for factual accuracy against the source code         |
+| `/audit-style`           | Audit source, configuration, and documentation files for style compliance      |
+| `/commit`                | Draft Ataraxis framework style-compliant git commit messages                   |
+| `/pr`                    | Draft Ataraxis framework style-compliant pull request summaries                |
+| `/release`               | Draft Ataraxis framework style-compliant release notes                         |
 
 ## Companion library synchronization
 
@@ -62,17 +80,6 @@ in `ataraxis-transport-layer-pc`, and vice versa.
 - Build system, documentation, and PlatformIO configuration
 - Arduino/Teensy-specific timing and `elapsedMillis` usage
 
-## Available skills
-
-| Skill                    | Description                                                               |
-|--------------------------|---------------------------------------------------------------------------|
-| `/explore-codebase`      | Perform in-depth codebase exploration at session start                    |
-| `/cpp-style`             | Apply Sun Lab C++ coding conventions (REQUIRED for all C++ changes)       |
-| `/readme-style`          | Apply Sun Lab README conventions (REQUIRED for README changes)            |
-| `/api-docs`              | Apply Sun Lab API documentation conventions                               |
-| `/commit`                | Draft Sun Lab style-compliant git commit messages                         |
-| `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions        |
-
 ## Project context
 
 This is **ataraxis-transport-layer-mc**, a header-only C++17 library for Arduino and Teensy microcontrollers that
@@ -94,7 +101,8 @@ applications with microsecond-level communication speeds, optimized for the
 
 - **TransportLayer** (`transport_layer.h`): Main user-facing class providing `SendData()` and `ReceiveData()` methods.
   Manages dual staging buffers (transmission and reception), packet construction with COBS encoding and CRC checksums,
-  and multi-stage packet parsing with configurable reception timeout. Templated on CRC polynomial type and buffer sizes.
+  and multi-stage packet parsing with a fixed 10 ms reception timeout. Templated on CRC polynomial type and buffer
+  sizes.
 - **COBSProcessor** (`cobs_processor.h`): Static methods for in-place Consistent Overhead Byte Stuffing encoding and
   decoding. Internal component used by TransportLayer; not intended for direct use.
 - **CRCProcessor** (`crc_processor.h`): Templated class for CRC-8/16/32 checksum computation using a precomputed
@@ -107,7 +115,7 @@ applications with microsecond-level communication speeds, optimized for the
 
 ### Packet format
 
-```
+```text
 [START BYTE (129)] [PAYLOAD SIZE] [COBS OVERHEAD] [PAYLOAD (1-254 bytes)] [DELIMITER (0)] [CRC CHECKSUM]
 ```
 
@@ -132,8 +140,9 @@ applications with microsecond-level communication speeds, optimized for the
   detecting the target microcontroller architecture (Teensy, Arduino Due, Mega, etc.).
 - **Static processing classes**: `COBSProcessor` uses only static methods with no instance state. `CRCProcessor`
   maintains a lookup table computed at construction.
-- **Status code returns**: All operations return `kTransportStatusCodes` enum values rather than throwing exceptions,
-  consistent with embedded C++ patterns.
+- **Status code returns**: Methods report errors via status codes rather than exceptions, returning `bool`/`void` and
+  recording a `kTransportStatusCodes` value that is retrievable as a `uint8_t` via `get_runtime_status()`, consistent
+  with embedded C++ patterns.
 - **`PACKED_STRUCT` macro**: Applied to user-defined structures for serialization, ensuring no padding bytes are
   inserted by the compiler.
 
@@ -174,7 +183,8 @@ tox -e docs                      # Build Sphinx API documentation (Doxygen + Bre
 1. Review `src/transport_layer.h` for the current implementation
 2. Understand the dual-buffer architecture and packet format (start byte, payload size, COBS overhead, payload,
    delimiter, CRC checksum)
-3. All methods return `kTransportStatusCodes` — do not introduce exception-based error handling
+3. Methods report errors via status codes (returned as `bool`/`void`, recorded in the runtime status) — do not
+   introduce exception-based error handling
 4. Parameters must match the companion `ataraxis-transport-layer-pc` Python library exactly; mismatches cause
    unrecoverable packet corruption
 

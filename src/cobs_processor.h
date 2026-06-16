@@ -32,6 +32,9 @@ class COBSProcessor final
         /**
          * @brief Uses the COBS scheme to encode the input payload into a packet in-place.
          *
+         * @note This method performs no bounds checking. The payload size stored at the payload-size index must be
+         * within the valid range, and the buffer must have room for the appended overhead and delimiter bytes.
+         *
          * @tparam kBufferSize the size of the input buffer array, in bytes.
          * @param buffer the buffer that stores the payload data to be encoded.
          *
@@ -83,12 +86,12 @@ class COBSProcessor final
                 }
             }
 
-            // Once all instances of delimiter_byte_value have been encoded, sets the overhead byte (index 0 of buffer)
+            // Once all instances of delimiter_byte_value have been encoded, sets the overhead byte (index 2 of buffer)
             // to store the distance to the closest delimiter_byte_value instance.
             if (last_delimiter_index != 0)
             {
-                // Converts the absolute index of the last delimiter to the distance to that value from the overhead
-                // byte located at index 2
+                // Converts the absolute index of the closest encoded delimiter into its distance from the overhead
+                // byte located at index 2.
                 buffer[kBufferLayout::kOverheadByteIndex] = last_delimiter_index - kBufferLayout::kOverheadByteIndex;
             }
             else
@@ -98,12 +101,15 @@ class COBSProcessor final
                 buffer[kBufferLayout::kOverheadByteIndex] = delimiter_index - kBufferLayout::kOverheadByteIndex;
             }
 
-            // Returns the size of the packet accounting for the addition of the overhead byte and the delimiter byte.
+            // Returns the size of the COBS-encoded frame, accounting for the added overhead byte and delimiter byte.
             return payload_size + 2;
         }
 
         /**
          * @brief Uses the COBS scheme to decode the payload from the input packet in-place.
+         *
+         * @note A return value of 0 indicates packet corruption, whether the delimiter is encountered early or never
+         * reached.
          *
          * @tparam kBufferSize the size of the input buffer, in bytes.
          * @param buffer the buffer that stores the packet data from which to decode the payload.

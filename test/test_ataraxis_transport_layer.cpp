@@ -81,7 +81,7 @@ void test_cobs_processor_encode_decode()
     }
 }
 
-/// Verifies error handling for COBSProcessor EncodePayload() and DecodePayload() methods.
+/// Verifies error handling for COBSProcessor DecodePayload() and boundary-size handling for EncodePayload().
 void test_cobs_processor_errors()
 {
     // Instantiates the class object to be tested
@@ -124,7 +124,7 @@ void test_cobs_processor_errors()
     payload_buffer[5]  = 0;
     payload_buffer[10] = 0;
 
-    // Encodes the payload of size 15, inserting a delimiter (0) byte at index 16, generating a packet of size 17
+    // Encodes the payload of size 15, inserting a delimiter (0) byte at index 18, generating a packet of size 17
     payload_buffer[1]           = 15;
     const uint16_t encoded_size = cobs_processor.EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(17, encoded_size);
@@ -156,7 +156,7 @@ void test_crc_processor_generate_table_crc8()
 {
     // CRC-8 Table (Polynomial 0x07)
     // Make sure your controller has enough memory for the tested and generated tables. Here, the controller needs to
-    // have 256 bytes of memory to store both tables, which should be compatible with most existing boards, including
+    // have 512 bytes of memory to store both tables, which should be compatible with most existing boards, including
     // Arduino Uno.
     constexpr uint8_t test_crc_table[256] = {
         0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15, 0x38, 0x3F, 0x36, 0x31, 0x24, 0x23, 0x2A, 0x2D, 0x70, 0x77,
@@ -352,7 +352,8 @@ void test_stream_mock()
         TEST_ASSERT_EQUAL_INT16(-1, stream.tx_buffer[i]);
     }
 
-    // Also verifies that the tx_index was reset to 0
+    // Also verifies that the rx_index and tx_index were reset to 0
+    TEST_ASSERT_EQUAL_size_t(0, stream.rx_buffer_index);
     TEST_ASSERT_EQUAL_size_t(0, stream.tx_buffer_index);
 
     // Explicitly overwrites both buffers with test data
@@ -698,7 +699,7 @@ void test_transport_layer_data_transmission()
 
     // Ensures that the overhead byte copied to the rx_buffer is not zero (that the packet is COBS-encoded). This check
     // has to be true for the decoding to work as expected and not throw a 'packet already decoded' error.
-    TEST_ASSERT_NOT_EQUAL_UINT16(mock_port.rx_buffer[1], 0);
+    TEST_ASSERT_NOT_EQUAL_UINT16(mock_port.rx_buffer[2], 0);
 
     // Receives the data stored in the StreamMock reception buffer. If all steps of this process succeed, the method
     // returns 'true'.
@@ -715,7 +716,7 @@ void test_transport_layer_data_transmission()
     // the forward-conversion since there is no need to generate the CRC value or simulate COBS encoding here. This
     // assumes these methods have been fully tested before calling this test
     uint8_t decoded_array[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};  // Placeholder-initialized
-    protocol.ReadData(decoded_array);                            // Reads the data from _transmission_buffer
+    protocol.ReadData(decoded_array);                            // Reads the data from _reception_buffer
 
     // Verifies that the decoded payload fully matches the test payload array contents
     TEST_ASSERT_EQUAL_UINT8_ARRAY(test_array, decoded_array, sizeof(test_array));
@@ -726,16 +727,16 @@ void test_transport_layer_data_transmission()
     bool data_available = protocol.Available();
     TEST_ASSERT_TRUE(data_available);
 
-    // Verifies that ResetReceptionBuffer() method works as expected. This method resets the overhead and payload_size
-    // variables of the buffer. Since the overhead is already reset by the decoder method, only the latter action is
-    // evaluated below.
+    // Verifies that ResetReceptionBuffer() method works as expected. This method resets the overhead, payload_size,
+    // and consumed-payload-bytes variables of the buffer. Since the overhead is already reset by the decoder method,
+    // only the payload_size action is evaluated below.
     protocol.ResetReceptionBuffer();
     TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_reception_buffer());
 
     // Also verifies ResetTransmissionBuffer() method, which works the same as the ResetReceptionBuffer() method, but
     // specifically targets the _transmission_buffer
     protocol.ResetTransmissionBuffer();
-    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_reception_buffer());
+    TEST_ASSERT_EQUAL_UINT16(0, protocol.get_bytes_in_transmission_buffer());
 
     // Fully resets the mock rx_buffer with -1, which is used as a stand-in for no available data. This is to test the
     // 'false' return portion of the Available() method.
@@ -792,9 +793,9 @@ void test_transport_layer_data_transmission_errors()
     mock_port.rx_buffer[0]    = 129;  // Restores the start byte
     mock_port.rx_buffer_index = 0;    // Resets readout index back to 0
 
-    // Verifies that when not enough bytes are available to parse (according to the minimum_expected_payload_size)
-    // argument, the algorithm correctly aborts parsing with kNoBytesToParseFromBuffer code. Recall that for this test,
-    // the class expects payloads of size 5 at a minimum.
+    // Verifies that when not enough bytes are available to parse, the algorithm correctly aborts parsing with the
+    // kNoBytesToParse code. The abort triggers when Available() does not find at least kMinimumPacketSize buffered
+    // bytes.
     mock_port.rx_buffer[1] = -1;  // Essentially aborts reception at the payload_size byte value.
     const bool result      = protocol.ReceiveData();
     TEST_ASSERT_EQUAL_UINT8(
@@ -839,8 +840,8 @@ void test_transport_layer_data_transmission_errors()
     mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 
     // Verifies that the algorithm correctly handles invalid payload_size byte errors. Tests payload_size byte
-    // being too small (0) and too large (61). Note, these sizes depend on the template maximum_payload_size and
-    // constructor minimum_expected_payload_size parameters.
+    // being too small (0) and too large (61). Note, these sizes depend on the template kMaximumReceivedPayloadSize
+    // parameter and the fixed kMinimumPayloadSize constant.
 
     // Payload too small
     mock_port.rx_buffer[11] = 0;

@@ -11,7 +11,8 @@
 #include <Stream.h>
 
 /**
- * @brief Simulates a Serial Stream interface by publicly exposing reception and transmission buffers for testing.
+ * @brief Simulates a Serial Stream interface by publicly exposing the reception and transmission buffers, their
+ * index trackers, and the buffer-size constant for testing.
  *
  * @note The instance buffers use int16_t datatype, but consider any value outside the uint8_t range (0 through 255)
  * as invalid.
@@ -39,7 +40,7 @@ class StreamMock final : public Stream
         /// Tracks the currently evaluated transmission buffer index.
         size_t tx_buffer_index = 0;
 
-        /// Initializes the instance with zeroed transmission and reception buffers.
+        /// Initializes the instance by filling the transmission and reception buffers with valid zero bytes.
         StreamMock()
         {
             memset(rx_buffer, 0, sizeof(rx_buffer));
@@ -50,6 +51,8 @@ class StreamMock final : public Stream
 
         /**
          * @brief Reads one value ('byte') from the reception buffer.
+         *
+         * @note A successful read advances the reception index, consuming the value; a -1 return leaves it unchanged.
          *
          * @returns the read value as a byte-range integer, or -1 if no valid values are available.
          */
@@ -77,7 +80,8 @@ class StreamMock final : public Stream
          *
          * @note Unlike the readBytes() Stream class method, this method does not use a timeout timer and instead runs
          * either until it processes the requested number of elements, an 'invalid' value is encountered, or there is no
-         * more data to process.
+         * more data to process. Each consumed byte advances the reception index, so the returned count may be any value
+         * between 0 and length.
          *
          * @param buffer the buffer where to transfer the read bytes.
          * @param length the number of bytes to read.
@@ -109,8 +113,9 @@ class StreamMock final : public Stream
         /**
          * @brief Writes the requested number of bytes from the input buffer array to the transmission buffer.
          *
-         * @note Each writing cycle starts at index 0 of the transmission buffer, overwriting as many indices as
-         * necessary to fully consume the input buffer.
+         * @note Writing begins at the current transmission index and advances it, so consecutive calls append.
+         * If the transmission buffer fills before all input bytes are written, writing stops early and the return
+         * value reflects only the bytes actually written.
          *
          * @param buffer the buffer containing the bytes to write.
          * @param bytes_to_write the number of bytes to write to the transmission buffer.
@@ -148,7 +153,7 @@ class StreamMock final : public Stream
         /**
          * @brief Returns the number of elements in the reception buffer available for reading.
          *
-         * @returns the number of valid byte-range elements remaining in the reception buffer.
+         * @returns the number of contiguous valid byte-range elements starting at the current reception index.
          */
         int available() override
         {
@@ -200,7 +205,7 @@ class StreamMock final : public Stream
             tx_buffer_index = 0;
         }
 
-        /// Resets the instance's transmission and reception buffers.
+        /// Resets the transmission and reception buffers by filling them with the -1 invalid-value sentinel.
         void reset()
         {
             memset(rx_buffer, -1, sizeof(rx_buffer));

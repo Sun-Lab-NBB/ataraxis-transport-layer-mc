@@ -52,7 +52,7 @@ static constexpr uint16_t kSerialBufferSize = 256;
 // Teensy 3.x, 4.x (USB serial).
 #if defined(__MK20DX128__) || defined(__MK20DX256__) || defined(__MK64FX512__) || defined(__MK66FX1M0__) || \
     defined(__IMXRT1062__)
-static constexpr uint16_t kSerialBufferSize = 8192;  // Default is 4 x 2048 buffers == 8192 bytes total
+static constexpr uint16_t kSerialBufferSize = 8192;  // Teensy 3.x/4.x USB serial reception buffer size, in bytes.
 
 // Teensy 2.0, Teensy++ 2.0 (USB serial) maximum reception buffer size in bytes.
 #else
@@ -126,11 +126,15 @@ class TransportLayer final
         /**
          * @brief Initializes all runtime assets that facilitate data transmission and reception.
          *
+         * @note The constructor seeds the transmission buffer's first byte with the protocol start byte value.
+         *
          * @param communication_port The initialized communication interface instance, such as Serial or USB Serial.
          * @param crc_polynomial The polynomial to use for the generation of the CRC lookup table. The polynomial must
-         * be standard (non-reflected / non-reversed).
-         * @param crc_initial_value The value to which the CRC checksum is initialized before calculation.
-         * @param crc_final_xor_value The value with which the CRC checksum is XORed after calculation.
+         * be standard (non-reflected / non-reversed). Defaults to 0x07.
+         * @param crc_initial_value The value to which the CRC checksum is initialized before calculation. Defaults to
+         * 0x00.
+         * @param crc_final_xor_value The value with which the CRC checksum is XORed after calculation. Defaults to
+         * 0x00.
          */
         explicit TransportLayer(
             Stream& communication_port,
@@ -224,7 +228,8 @@ class TransportLayer final
          * @warning This method is intended for testing and debugging purposes and should not be used in production
          * runtimes.
          *
-         * @returns true if the payload was copied to the reception buffer and false otherwise.
+         * @returns true if the payload was copied to the reception buffer, or false if the transmission buffer's
+         * payload size exceeds the reception buffer's maximum payload capacity.
          */
         bool CopyTxBufferPayloadToRxBuffer()
         {
@@ -325,6 +330,9 @@ class TransportLayer final
          *
          * @note The size of the received payload can be queried using the get_bytes_in_reception_buffer() method.
          *
+         * @note On failure, the specific reason is recorded in the runtime status and can be retrieved via
+         * get_runtime_status().
+         *
          * @returns true if the packet was successfully received and unpacked and false otherwise.
          */
         bool ReceiveData()
@@ -352,8 +360,8 @@ class TransportLayer final
          * @tparam ObjectType The datatype of the object to write to the transmission buffer.
          * @param object The object to write to the transmission buffer.
          * @param object_size The size of the object, in bytes.
-         * @returns true if the method successfully writes the object's data to the transmission buffer and false
-         * otherwise.
+         * @returns true if the object's data was written to the transmission buffer, or false if the buffer's payload
+         * region lacks space for the object (the runtime status is set to kWriteObjectBufferError).
          */
         template <typename ObjectType>
         bool WriteData(const ObjectType& object, const uint16_t object_size = sizeof(ObjectType))
@@ -403,8 +411,8 @@ class TransportLayer final
          * @tparam ObjectType The datatype of the object to read from the reception buffer.
          * @param object The object to read from the reception buffer.
          * @param object_size The size of the object, in bytes.
-         * @returns true if the method successfully reads the object's data from the reception buffer and false
-         * otherwise.
+         * @returns true if the object's data was read from the reception buffer, or false if fewer than object_size
+         * unread payload bytes remain (the runtime status is set to kReadObjectBufferError).
          */
         template <typename ObjectType>
         bool ReadData(ObjectType& object, const uint16_t object_size = sizeof(ObjectType))
@@ -450,20 +458,20 @@ class TransportLayer final
         /// Stores the size of the CRC checksum postamble, in bytes.
         static constexpr uint8_t kPostambleSize = sizeof(PolynomialType);  // NOLINT(*-dynamic-static-initializers)
 
-        /// Stores the size of the smallest packet expected to be received at runtime, in bytes.
-        static constexpr uint16_t kMinimumPacketSize =
-            kBufferLayout::kMinimumPayloadSize + kBufferLayout::kOverheadByteIndex
-            + kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
+        /// Stores the minimum number of buffered bytes required before the instance attempts to read a packet.
+        static constexpr uint16_t kMinimumPacketSize = kBufferLayout::kMinimumPayloadSize +
+                                                       kBufferLayout::kOverheadByteIndex +
+                                                       kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
 
         /// Stores the size of the instance's transmission staging buffer, in bytes.
-        static constexpr uint16_t kTransmissionBufferSize =
-            kMaximumTransmittedPayloadSize + kBufferLayout::kOverheadByteIndex + 2
-            + kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
+        static constexpr uint16_t kTransmissionBufferSize = kMaximumTransmittedPayloadSize +
+                                                            kBufferLayout::kOverheadByteIndex + 2 +
+                                                            kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
 
         /// Stores the size of the instance's reception staging buffer, in bytes.
-        static constexpr uint16_t kReceptionBufferSize =
-            kMaximumReceivedPayloadSize + kBufferLayout::kOverheadByteIndex + 2
-            + kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
+        static constexpr uint16_t kReceptionBufferSize = kMaximumReceivedPayloadSize +
+                                                         kBufferLayout::kOverheadByteIndex + 2 +
+                                                         kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
 
         // Ensures that the requested transmission buffer does not exceed the microcontroller's serial buffer size.
         static_assert(

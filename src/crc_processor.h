@@ -47,6 +47,9 @@ class CRCProcessor
         /**
          * @brief Generates the lookup table used by the instance to speed up future CRC checksum calculations.
          *
+         * @note The implementation is MSB-first (left-shifting). The polynomial, initial value, and final XOR value
+         * must all be expressed in standard non-reflected, MSB-aligned form.
+         *
          * @param polynomial The polynomial to use for the generation of the CRC lookup table. The polynomial must
          * be standard (non-reflected / non-reversed).
          * @param initial_value The value to which the CRC checksum is initialized before calculation.
@@ -71,11 +74,12 @@ class CRCProcessor
          * @tparam kCheck Determines whether the method is called to verify the incoming packet's data integrity or to
          * generate and write the CRC checksum to the outgoing packet's postamble section.
          * @tparam kBufferSize The size of the input buffer.
-         * @param buffer The buffer that stores the COBS-encoded packet for which to calculate the checksum.
+         * @param buffer The buffer that stores the COBS-encoded packet for which to calculate the checksum. The buffer
+         * must conform to kBufferLayout, with a valid payload-size byte read to determine the processing range.
          *
-         * @returns the size of the buffer occupied by the packet's data and the appended CRC checksum if
-         * the method is called to calculate the new CRC checksum. Returns '1' if the method is configured to verify
-         * the packet's data integrity and the data is intact, and '0' otherwise.
+         * @returns the total number of bytes occupied in the buffer, including the appended CRC checksum, when
+         * generating a new checksum. Returns '1' when verifying data integrity and the data is intact, and '0'
+         * otherwise.
          */
         template <const bool kCheck, const size_t kBufferSize>
         uint16_t CalculateChecksum(uint8_t (&buffer)[kBufferSize])
@@ -92,7 +96,8 @@ class CRCProcessor
             // include just the packet itself when generating a new checksum.
             constexpr uint16_t adjustment = kCheck ? kCRCByteLength : 0;
 
-            // Calculates the stretch of data values to process using the start index and the packet size.
+            // Calculates the end index from the start index, the payload size byte, the fixed overhead and delimiter
+            // bytes, and the CRC postamble length when verifying.
             const uint16_t end_index = start_index + buffer[kBufferLayout::kPayloadSizeIndex] + 2 + adjustment;
 
             // Iteratively calculates the CRC checksum for each byte inside the packet.

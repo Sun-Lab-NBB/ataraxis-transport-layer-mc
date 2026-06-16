@@ -66,8 +66,9 @@ ___
 
 1. Download this repository to the local machine using the preferred method, such as git-cloning. Use one of the
    [stable releases](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-mc/tags).
-2. Unpack the downloaded tarball and move all 'src' contents into the appropriate destination 
-   ('include,' 'src,' or 'libs') directory of the project that needs to use this library.
+2. Unpack the downloaded tarball and move the 'src' header files (do not copy 'src/main.cpp', which is a
+   development-only entry point) into the appropriate destination ('include,' 'src,' or 'libs') directory of the
+   project that needs to use this library.
 3. Add ```#include <transport_layer.h>``` to the top of the file(s) that need to access the library API.
 
 ### Platformio
@@ -179,9 +180,10 @@ There are two key methods associated with sending data to the PC:
 - The `WriteData()` method serializes the input object and writes the resultant byte sequence to the 
   transmission buffer’s payload region. Each call appends the data to the end of the payload already stored in the 
   transmission buffer.
-- The `SendData()` method encodes the payload stored in the transmission buffer into a packet using COBS, calculates 
-  and adds the CRC checksum to the encoded packet, and transmits the packet to the PC. The method requires that at 
-  least one byte of data is written to the staging buffer via the WriteData() method before it can be sent to the PC.
+- The `SendData()` method encodes the payload stored in the transmission buffer into a packet using COBS, calculates
+  and adds the CRC checksum to the encoded packet, and transmits the packet to the PC. At least one byte of data
+  should be written to the transmission buffer via the WriteData() method before SendData() is called; transmitting an
+  empty payload produces a packet that the receiver rejects.
 
 The example below showcases the sequence of steps necessary to send the data to the PC and assumes TransportLayer 
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example:

@@ -64,14 +64,14 @@ in `ataraxis-transport-layer-pc`, and vice versa.
 
 ## Available skills
 
-| Skill                    | Description                                                               |
-|--------------------------|---------------------------------------------------------------------------|
-| `/explore-codebase`      | Perform in-depth codebase exploration at session start                    |
-| `/cpp-style`             | Apply Sun Lab C++ coding conventions (REQUIRED for all C++ changes)       |
-| `/readme-style`          | Apply Sun Lab README conventions (REQUIRED for README changes)            |
-| `/api-docs`              | Apply Sun Lab API documentation conventions                               |
-| `/commit`                | Draft Sun Lab style-compliant git commit messages                         |
-| `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions        |
+| Skill                    | Description                                                                    |
+|--------------------------|--------------------------------------------------------------------------------|
+| `/explore-codebase`      | Perform in-depth codebase exploration at session start                         |
+| `/cpp-style`             | Apply Ataraxis framework C++ coding conventions (REQUIRED for all C++ changes) |
+| `/readme-style`          | Apply Ataraxis framework README conventions (REQUIRED for README changes)      |
+| `/api-docs`              | Apply Ataraxis framework API documentation conventions                         |
+| `/commit`                | Draft Ataraxis framework style-compliant git commit messages                   |
+| `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions             |
 
 ## Project context
 

@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(cp /home/cyberaxolotl/.claude/plugins/marketplaces/ataraxis/plugins/automation/skills/cpp-style/SKILL.md /home/cyberaxolotl/.claude/plugins/cache/ataraxis/automation/1.0.0/skills/cpp-style/SKILL.md)",
+      "Bash(cp /home/cyberaxolotl/.claude/plugins/marketplaces/ataraxis/plugins/automation/skills/cpp-style/references/anti-patterns.md /home/cyberaxolotl/.claude/plugins/cache/ataraxis/automation/1.0.0/skills/cpp-style/references/anti-patterns.md)",
+      "Bash(cp /home/cyberaxolotl/.claude/plugins/marketplaces/ataraxis/plugins/automation/skills/cpp-style/SKILL.md /home/cyberaxolotl/Desktop/GitHubRepos/ataraxis/plugins/automation/skills/cpp-style/SKILL.md)",
+      "Bash(cp /home/cyberaxolotl/.claude/plugins/marketplaces/ataraxis/plugins/automation/skills/cpp-style/references/anti-patterns.md /home/cyberaxolotl/Desktop/GitHubRepos/ataraxis/plugins/automation/skills/cpp-style/references/anti-patterns.md)",
+      "Bash(cp /home/cyberaxolotl/.claude/plugins/marketplaces/ataraxis/plugins/automation/skills/cpp-style/references/class-patterns.md /home/cyberaxolotl/Desktop/GitHubRepos/ataraxis/plugins/automation/skills/cpp-style/references/class-patterns.md)",
+      "Bash(cp /home/cyberaxolotl/.claude/plugins/marketplaces/ataraxis/plugins/automation/skills/cpp-style/references/doxygen-and-types.md /home/cyberaxolotl/Desktop/GitHubRepos/ataraxis/plugins/automation/skills/cpp-style/references/doxygen-and-types.md)",
+      "Bash(cp /home/cyberaxolotl/Desktop/GitHubRepos/ataraxis/plugins/automation/skills/cpp-style/references/anti-patterns.md /home/cyberaxolotl/.claude/plugins/marketplaces/ataraxis/plugins/automation/skills/cpp-style/references/anti-patterns.md)",
+      "Bash(cp /home/cyberaxolotl/Desktop/GitHubRepos/ataraxis/plugins/automation/skills/cpp-style/references/anti-patterns.md /home/cyberaxolotl/.claude/plugins/cache/ataraxis/automation/1.0.0/skills/cpp-style/references/anti-patterns.md)",
+      "Bash(clang-format:*)",
+      "Bash(pip index:*)",
+      "Bash(pip install:*)",
+      "Bash(grep -E \"\\\\.\\(md|txt|rst|cfg|toml|yaml|yml\\)$|LICENSE|AUTHORS|CONTRIBUTORS\")",
+      "Bash(git:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "sl-migration"
+  ]
+}

@@ -28,6 +28,13 @@ using namespace axtlmc_shared_assets;
  */
 class COBSProcessor final
 {
+        // Guarantees that every distance value the encoder computes fits into the byte it overwrites. The largest is
+        // the overhead byte's distance to the delimiter appended past the payload, which is kMaximumPayloadSize + 1.
+        static_assert(
+            kBufferLayout::kMaximumPayloadSize + 1 <= UINT8_MAX,
+            "COBSProcessor requires the maximum payload size to keep every COBS distance value within a single byte."
+        );
+
     public:
         /**
          * @brief Uses the COBS scheme to encode the input payload into a packet in-place.
@@ -47,55 +54,36 @@ class COBSProcessor final
 
             // Determines start and end indices for the loop below based on the requested payload_size. Transforms the
             // indices to be buffer-centric and account for the prepended metadata bytes.
-            const uint16_t payload_end_index = payload_size + kBufferLayout::kOverheadByteIndex;  // INCLUSIVE end index
+            const size_t payload_end_index = payload_size + kBufferLayout::kOverheadByteIndex;  // INCLUSIVE end index
 
             // Since payload_end_index is inclusive, the delimiter index immediately follows the value of that variable.
-            const uint16_t delimiter_index = payload_end_index + 1;
+            const size_t delimiter_index = payload_end_index + 1;
 
             buffer[delimiter_index] = kBufferLayout::kDelimiterByte;
 
-            // Tracks the discovered delimiter byte indices during the loop below to support iterative COBS
-            // encoding.
-            uint16_t last_delimiter_index = 0;
+            // Tracks the index of the delimiter byte encoded most recently. Seeding the tracker with the delimiter
+            // byte appended past the payload makes the first encoded delimiter measure its distance against that
+            // byte, which is the distance the COBS scheme requires at that position.
+            size_t last_delimiter_index = delimiter_index;
 
             // Loops over the requested payload size in reverse and encodes all instances of the delimiter byte
             // using the COBS scheme.
-            for (uint16_t index = payload_end_index; index >= kBufferLayout::kPayloadStartIndex; --index)
+            for (size_t index = payload_end_index; index >= kBufferLayout::kPayloadStartIndex; --index)
             {
                 if (buffer[index] == kBufferLayout::kDelimiterByte)
                 {
-                    if (last_delimiter_index == 0)
-                    {
-                        // Computes the distance from the current index to the delimiter byte appended past the end
-                        // of the payload. This branch runs while last_delimiter_index still holds its default 0.
-                        buffer[index] = delimiter_index - index;
-                    }
-                    else
-                    {
-                        // If last_delimiter_index is set to a non-0 value, uses it to calculate the distance from the
-                        // current index to the last (encoded) delimiter byte value and overwrites the variable with
-                        // that distance value.
-                        buffer[index] = last_delimiter_index - index;
-                    }
-
+                    // Overwrites the delimiter byte with the distance to the delimiter byte encoded after it, which
+                    // is the chain the decoder follows from one encoded delimiter to the next.
+                    buffer[index]        = static_cast<uint8_t>(last_delimiter_index - index);
                     last_delimiter_index = index;
                 }
             }
 
             // Once all delimiter bytes have been encoded, sets the overhead byte (index 2 of buffer) to store the
-            // distance to the closest encoded delimiter byte.
-            if (last_delimiter_index != 0)
-            {
-                // Converts the absolute index of the closest encoded delimiter into its distance from the overhead
-                // byte located at index 2.
-                buffer[kBufferLayout::kOverheadByteIndex] = last_delimiter_index - kBufferLayout::kOverheadByteIndex;
-            }
-            else
-            {
-                // Calculates the distance from the overhead byte to the appended delimiter byte value, since no
-                // encoded delimiter bytes were found in the payload.
-                buffer[kBufferLayout::kOverheadByteIndex] = delimiter_index - kBufferLayout::kOverheadByteIndex;
-            }
+            // distance to the closest encoded delimiter byte. A payload holding no delimiter bytes leaves the tracker
+            // at the appended delimiter byte, which is the distance the scheme requires in that case.
+            buffer[kBufferLayout::kOverheadByteIndex] =
+                static_cast<uint8_t>(last_delimiter_index - kBufferLayout::kOverheadByteIndex);
 
             // Returns the size of the COBS-encoded frame, accounting for the added overhead byte and delimiter byte.
             return payload_size + 2;
@@ -118,16 +106,16 @@ class COBSProcessor final
             // Extracts payload size and uses it to calculate the packet size by adding the overhead and delimiter
             // bytes to the payload size.
             const uint8_t payload_size = buffer[kBufferLayout::kPayloadSizeIndex];
-            const uint16_t packet_size = payload_size + 2;
+            const size_t packet_size   = payload_size + 2;
 
-            const uint16_t delimiter_index = packet_size + 1;
+            const size_t delimiter_index = packet_size + 1;
 
             // Tracks the index inside the packet buffer read at each decoding cycle iteration.
-            uint16_t read_index = kBufferLayout::kOverheadByteIndex;
+            size_t read_index = kBufferLayout::kOverheadByteIndex;
 
             // Tracks distance to the next delimiter byte. Initializes to the value obtained from reading the
             // overhead byte, which points to the first (or only) occurrence of the delimiter byte in the packet.
-            auto next_index = static_cast<uint16_t>(buffer[read_index]);
+            auto next_index = static_cast<size_t>(buffer[read_index]);
 
             // Resets the overhead byte to 0 to indicate that the buffer has been through a decoding cycle.
             buffer[read_index] = 0;

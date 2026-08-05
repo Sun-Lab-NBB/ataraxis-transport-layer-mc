@@ -455,8 +455,7 @@ class TransportLayer final
             );
 
             // Updates the payload size tracker to reflect the increased payload size.
-            _transmission_buffer[kBufferLayout::kPayloadSizeIndex] =
-                max(_transmission_buffer[kBufferLayout::kPayloadSizeIndex], static_cast<uint8_t>(payload_size));
+            _transmission_buffer[kBufferLayout::kPayloadSizeIndex] = static_cast<uint8_t>(payload_size);
 
             _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kObjectWrittenToBuffer);
             return true;

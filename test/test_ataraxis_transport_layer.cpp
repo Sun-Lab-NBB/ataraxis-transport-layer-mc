@@ -296,6 +296,33 @@ void test_crc_processor_calculate_checksum()
     TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
 }
 
+/// Verifies CRCProcessor CalculateChecksum() for a polynomial configured with a non-zero final XOR value.
+void test_crc_processor_nonzero_final_xor()
+{
+    // Generates the test buffer of size 10 with an example packet of size 6 and two placeholder values for the CRC
+    // checksum, matching the layout used by the checksum test above.
+    uint8_t test_packet[10] = {0x00, 0x04, 0x01, 0x02, 0x03, 0x04, 0x05, 0x15, 0x00, 0x00};
+
+    // Instantiates the class object to be tested using CRC-16/USB, a standard variant with a non-zero final XOR value.
+    CRCProcessor<uint16_t> crc_processor(0x8005, 0xFFFF, 0xFFFF);
+
+    // Runs the checksum generation function on the test packet
+    const uint16_t result = crc_processor.CalculateChecksum<false>(test_packet);
+    TEST_ASSERT_EQUAL_UINT16(10, result);
+
+    // Verifies that the intact packet passes the integrity check
+    TEST_ASSERT_EQUAL_UINT16(1, crc_processor.CalculateChecksum<true>(test_packet));
+
+    // Invalidates the checksum postamble and verifies that the checker reports data corruption
+    test_packet[9] ^= 0x01;
+    TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
+
+    // Restores the checksum, corrupts the packet payload instead, and verifies that this is also detected
+    test_packet[9] ^= 0x01;
+    test_packet[4] ^= 0x01;
+    TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
+}
+
 /// Verifies that StreamMock class methods function correctly.
 void test_stream_mock()
 {
@@ -777,10 +804,8 @@ void test_transport_layer_data_transmission_errors()
     // Initializes a test payload
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
 
-    // Currently, it is effectively impossible to encounter an error during data sending as there are now compile-time
-    // guards against every possible error engineered into the class itself or buffer manipulation methods. As such,
-    // simply runs the method sequence here and moves on to testing reception, which can run into errors introduced
-    // during transmission.
+    // Stages and sends a well-formed payload, which is the transmission path this test relies on. The transmission
+    // error codes are covered by the dedicated tests below, so this sequence moves straight on to testing reception.
     protocol.WriteData(test_payload);
     protocol.SendData();
 
@@ -979,10 +1004,8 @@ void test_transport_layer_postamble_timeout_error()
     // Initializes a test payload
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
 
-    // Currently, it is effectively impossible to encounter an error during data sending as there are now compile-time
-    // guards against every possible error engineered into the class itself or buffer manipulation methods. As such,
-    // simply runs the method sequence here and moves on to testing reception, which can run into errors introduced
-    // during transmission.
+    // Stages and sends a well-formed payload, which is the transmission path this test relies on. The transmission
+    // error codes are covered by the dedicated tests below, so this sequence moves straight on to testing reception.
     protocol.WriteData(test_payload);
     protocol.SendData();
 
@@ -1010,6 +1033,105 @@ void test_transport_layer_postamble_timeout_error()
     mock_port.rx_buffer_index = 0;
 }
 
+/// Verifies that ReceiveData() consumes exactly kPostambleSize bytes of the CRC checksum postamble.
+void test_transport_layer_postamble_size_boundary()
+{
+    // Initializes the tested class. The uint8_t polynomial makes the postamble exactly one byte long, so a parser
+    // that consumes a fixed multi-byte postamble reads past the end of the packet.
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
+
+    // Initializes a test payload
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+
+    // Builds a well-formed packet inside the mock class tx buffer
+    protocol.WriteData(test_payload);
+    protocol.SendData();
+
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    // Note, adjusts the size to account for the fact mock class uses uint16 buffers
+    constexpr uint16_t packet_elements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, packet_elements * sizeof(mock_port.rx_buffer[0]));
+
+    // Invalidates the element immediately following the postamble. Reception has to stop at the postamble, so a
+    // parser that consumes an extra byte stalls here and reports kPostambleTimeoutError instead.
+    mock_port.rx_buffer[packet_elements] = -1;
+
+    // Verifies that the packet is received without reading past its postamble
+    const bool receive_status = protocol.ReceiveData();
+    TEST_ASSERT_TRUE(receive_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the received payload matches the transmitted payload
+    uint8_t decoded_payload[10] = {};
+    const bool read_status      = protocol.ReadData(decoded_payload);
+    TEST_ASSERT_TRUE(read_status);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(test_payload, decoded_payload, sizeof(test_payload));
+}
+
+/// Verifies that SendData() reports kEmptyPayloadError when the transmission buffer holds no payload.
+void test_transport_layer_empty_payload_error()
+{
+    // Initializes the tested class
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
+
+    // Sends without staging a payload first
+    protocol.SendData();
+
+    // Verifies that the transmission was rejected
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kEmptyPayloadError),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that no bytes reached the communication interface
+    TEST_ASSERT_EQUAL_size_t(0, mock_port.tx_buffer_index);
+
+    // Verifies that a staged payload is transmitted normally
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+    protocol.WriteData(test_payload);
+    protocol.SendData();
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
+
+    // Verifies that sending again is rejected, as SendData() resets the transmission buffer after each transmission
+    protocol.SendData();
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kEmptyPayloadError),
+        protocol.get_runtime_status()
+    );
+}
+
+/// Verifies that SendData() reports kPacketPartiallySent when the interface accepts only a part of the packet.
+void test_transport_layer_partial_send_error()
+{
+    // Sizes the mock transmission buffer below the packet size, so that its write() method terminates early
+    StreamMock<10> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
+
+    // Initializes a test payload, which forms a 15-byte packet once encoded
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+
+    protocol.WriteData(test_payload);
+    protocol.SendData();
+
+    // Verifies that the truncated transmission was reported
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketPartiallySent),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the interface accepted only as many bytes as its buffer holds
+    TEST_ASSERT_EQUAL_size_t(StreamMock<10>::kStreamBufferSize, mock_port.tx_buffer_index);
+
+    // Verifies that the transmission buffer is reset, as a truncated packet cannot be retransmitted from it
+    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_transmission_buffer());
+}
+
 /// Specifies the test functions to be executed and controls their runtime.
 int RunUnityTests()
 {
@@ -1033,6 +1155,7 @@ int RunUnityTests()
 #endif
 
     RUN_TEST(test_crc_processor_calculate_checksum);
+    RUN_TEST(test_crc_processor_nonzero_final_xor);
 
     // Stream Mock
     RUN_TEST(test_stream_mock);
@@ -1046,7 +1169,10 @@ int RunUnityTests()
     RUN_TEST(test_transport_layer_data_transmission_errors);
     RUN_TEST(test_transport_layer_delimiter_not_found_error);
     RUN_TEST(test_transport_layer_postamble_timeout_error);
+    RUN_TEST(test_transport_layer_postamble_size_boundary);
     RUN_TEST(test_transport_layer_delimiter_found_too_early_error);
+    RUN_TEST(test_transport_layer_empty_payload_error);
+    RUN_TEST(test_transport_layer_partial_send_error);
 
     return UNITY_END();
 }

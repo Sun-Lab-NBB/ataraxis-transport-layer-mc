@@ -51,6 +51,8 @@ namespace axtlmc_shared_assets
         kDelimiterNotFoundError      = 25,  ///< Delimiter byte was not found at the end of the packet.
         kDelimiterFoundTooEarlyError = 26,  ///< Delimiter byte was found before reaching the end of the packet.
         kPostambleTimeoutError       = 27,  ///< The Postamble was not received within the specified time frame.
+        kEmptyPayloadError           = 28,  ///< Unable to send the packet, as the staged payload is empty.
+        kPacketPartiallySent         = 29,  ///< The communication interface accepted only a part of the packet.
     };
 
     /**

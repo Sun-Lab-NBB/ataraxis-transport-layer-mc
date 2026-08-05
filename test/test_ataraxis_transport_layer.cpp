@@ -73,8 +73,8 @@ void test_cobs_processor_encode_decode()
     // Checks that size correctly equals to packet_size - 2 (10, payload_size).
     TEST_ASSERT_EQUAL_UINT16(payload_size, decoded_size);
 
-    // Verifies that decoding reverses the payload back to the original state. Note, this excludes the overhead and
-    // the delimiter, as the decoding operation does not alter these values (hence the use of a separate tester array)
+    // Verifies that decoding reverses the payload back to the original state. Note, decoding resets the overhead
+    // byte to 0 and leaves the appended delimiter byte unchanged (hence the use of a separate tester array)
     TEST_ASSERT_EQUAL_UINT8_ARRAY(decoded_packet, payload_buffer, sizeof(decoded_packet));
 
     // Verifies that the non-packet-related portion of the buffer was not affected by the encoding/decoding cycles
@@ -93,7 +93,7 @@ void test_cobs_processor_errors()
     // Generates the test buffer and sets every value inside to 22
     uint8_t payload_buffer[258];
     memset(payload_buffer, 22, sizeof(payload_buffer));
-    payload_buffer[2] = 0;  // Resets the overhead placeholder to 0, otherwise the encoding attempt below will fail
+    payload_buffer[2] = 0;  // Zeroes the overhead placeholder, which EncodePayload() overwrites with the COBS overhead
 
     // Verifies that payloads with minimal size are encoded correctly
     payload_buffer[1] = static_cast<uint8_t>(kBufferLayout::kMinimumPayloadSize);
@@ -121,7 +121,7 @@ void test_cobs_processor_errors()
     // Resets the shared buffer to the default state before running the test to exclude any confounding factors from the
     // tests above
     memset(payload_buffer, 22, sizeof(payload_buffer));
-    payload_buffer[2] = 0;  // Sets the overhead placeholder to 0 which is required for encoding to work
+    payload_buffer[2] = 0;  // Re-zeroes the overhead placeholder after the buffer reset above
 
     // Introduces 'jump' variables to be encoded by the call below (since 0 is the delimiter value to be encoded)
     payload_buffer[5]  = 0;
@@ -441,7 +441,7 @@ void test_crc_processor_nonzero_final_xor()
     // checksum, matching the layout used by the checksum test above.
     uint8_t test_packet[10] = {0x00, 0x04, 0x01, 0x02, 0x03, 0x04, 0x05, 0x15, 0x00, 0x00};
 
-    // Instantiates the class object to be tested using CRC-16/USB, a standard variant with a non-zero final XOR value.
+    // Instantiates the object to be tested using a non-reflected 0x8005 polynomial and a non-zero final XOR value.
     CRCProcessor<uint16_t> crc_processor(0x8005, 0xFFFF, 0xFFFF);
 
     // Runs the checksum generation function on the test packet
@@ -973,9 +973,10 @@ void test_transport_layer_data_transmission()
     protocol.WriteData(test_array);
 
     // Sends the payload to the Stream buffer.
-    protocol.SendData();
+    const bool send_status = protocol.SendData();
 
     // Verifies that the data has been successfully sent to the Stream buffer
+    TEST_ASSERT_TRUE(send_status);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
 
     // Manually verifies the contents of the StreamMock class tx_buffer to confirm that the data has been
@@ -1003,8 +1004,7 @@ void test_transport_layer_data_transmission()
     }
 
     // Copies the fully encoded package into the rx_buffer to simulate packet reception and test ReceiveData() method.
-    // Note, adjusts the size to account for the fact mock class uses uint16 buffers
-    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(buffer_array) * 2);
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(buffer_array) * sizeof(mock_port.rx_buffer[0]));
 
     // Ensures that the overhead byte copied to the rx_buffer is not zero (that the packet is COBS-encoded). This check
     // has to be true for the decoding to work as expected and not throw a 'packet already decoded' error.
@@ -1060,15 +1060,13 @@ void test_transport_layer_data_transmission()
     TEST_ASSERT_FALSE(data_available);
 }
 
-/// Verifies error handling for SendData() and ReceiveData() methods of the TransportLayer class.
+/// Verifies ReceiveData() error handling for the TransportLayer class. SendData() error handling is covered by
+/// test_transport_layer_empty_payload_error() and test_transport_layer_partial_send_error().
 void test_transport_layer_data_transmission_errors()
 {
     // Initializes the tested class
     StreamMock<50> mock_port;  // Initializes to the minimal required size
     TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
-
-    // Instantiates crc encoder class separately to generate test data
-    auto crc_class = CRCProcessor<uint8_t>(0x07, 0x00, 0x00);
 
     // Initializes a test payload
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
@@ -1081,16 +1079,10 @@ void test_transport_layer_data_transmission_errors()
     // Verifies that the data has been 'sent' successfully
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
 
-    // Instantiates the test buffer. The buffer is set to the state it is expected to be found after writing and COBS
-    // encoding the data, but the CRC is calculated and added separately (see below).
-    uint8_t test_buffer[15] = {129, 10, 5, 1, 2, 3, 4, 3, 6, 7, 3, 9, 10, 0, 0};
-
-    // Calculates and adds packet CRC checksum to the postamble section of the test_buffer array
-    crc_class.CalculateChecksum<false>(test_buffer);
-
-    // Writes the components to the mock class rx buffer to simulate data reception
-    // Note, adjusts the size to account for the fact mock class uses uint16 buffers
-    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(test_buffer) * 2);
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    constexpr uint16_t packet_elements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, packet_elements * sizeof(mock_port.rx_buffer[0]));
 
     // Verifies that the algorithm correctly handles missing start byte error. By default, the algorithm is configured
     // to treat these 'errors' as 'no bytes available for reading' status, which is a non-error status
@@ -1113,7 +1105,7 @@ void test_transport_layer_data_transmission_errors()
         protocol.get_runtime_status()
     );
     TEST_ASSERT_FALSE(result);
-    mock_port.rx_buffer[1] = static_cast<int16_t>(test_buffer[1]);
+    mock_port.rx_buffer[1] = mock_port.tx_buffer[1];
 
     // Verifies that the algorithm correctly handles a CRC checksum error (indicates corrupted packets).
     mock_port.rx_buffer[14] = 123;  // Fake CRC byte, overwrites the crc byte value found at the end of the packet
@@ -1122,8 +1114,7 @@ void test_transport_layer_data_transmission_errors()
         static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed),
         protocol.get_runtime_status()
     );
-    mock_port.rx_buffer[14]   = test_buffer[14];  // Restores the CRC byte value
-    mock_port.rx_buffer_index = 0;                // Resets readout index back to 0
+    mock_port.rx_buffer_index = 0;  // Resets readout index back to 0
 
     // Verifies that the algorithm correctly handles missing payload_size byte errors. For the test to work,
     // the buffer has to be modified to contain valid bytes before the start byte so that the available() method
@@ -1137,7 +1128,7 @@ void test_transport_layer_data_transmission_errors()
     memcpy(
         reinterpret_cast<uint8_t*>(mock_port.rx_buffer) + sizeof(prepended_data),
         mock_port.tx_buffer,
-        sizeof(test_buffer) * 2
+        packet_elements * sizeof(mock_port.rx_buffer[0])
     );
 
     // Note that from now on all indices are statically shifted by 10 to account for the prepended data
@@ -1172,8 +1163,8 @@ void test_transport_layer_data_transmission_errors()
     mock_port.rx_buffer_index = 0;   // Resets readout index back to 0
     mock_port.rx_buffer[11]   = 10;  // Restores the payload_size byte value
 
-    // Sets the entire rx_buffer to valid non-delimiter byte-values for the test below to work, as it has to consume
-    // most of the rx_buffer to run out of the _reception_buffer space of the TransportLayer class.
+    // Fills the remainder of the rx_buffer with valid non-delimiter byte-values, so the parser keeps consuming bytes
+    // until it reaches the invalid value inserted below.
     for (uint16_t i = 15; i < StreamMock<50>::kStreamBufferSize; i++)
     {
         mock_port.rx_buffer[i] = 11;
@@ -1188,8 +1179,6 @@ void test_transport_layer_data_transmission_errors()
         static_cast<uint8_t>(kTransportStatusCodes::kPacketTimeoutError),
         protocol.get_runtime_status()
     );
-    mock_port.rx_buffer[17]   = test_buffer[7];  // Restores the invalidated byte back to the original value
-    mock_port.rx_buffer_index = 0;               // Resets readout index back to 0
 }
 
 /// Verifies that ReceiveData() reports kDelimiterNotFoundError for missing delimiters.
@@ -1198,7 +1187,6 @@ void test_transport_layer_delimiter_not_found_error()
     // Initializes the tested class
     StreamMock<50> mock_port;
     TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
-    CRCProcessor<uint8_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
@@ -1206,14 +1194,11 @@ void test_transport_layer_delimiter_not_found_error()
     protocol.WriteData(test_payload);
     protocol.SendData();
 
-    // Instantiates the test buffer. Delimiter is changed.
-    uint8_t test_buffer[15] = {129, 10, 5, 1, 2, 3, 4, 3, 6, 7, 3, 9, 10, 0, 0};
-
-    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(test_buffer) * 2);
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    constexpr uint16_t packet_elements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, packet_elements * sizeof(mock_port.rx_buffer[0]));
     mock_port.rx_buffer[13] = 1;  // Changes delimiter byte to non-zero
-
-    // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
-    crc_class.CalculateChecksum<false>(test_buffer);
 
     // Simulates receiving data
     protocol.ReceiveData();
@@ -1223,8 +1208,6 @@ void test_transport_layer_delimiter_not_found_error()
         static_cast<uint8_t>(kTransportStatusCodes::kDelimiterNotFoundError),
         protocol.get_runtime_status()
     );
-    mock_port.rx_buffer[14]   = test_buffer[14];
-    mock_port.rx_buffer_index = 0;
 }
 
 /// Verifies that ReceiveData() reports kDelimiterFoundTooEarlyError for premature delimiters.
@@ -1233,7 +1216,6 @@ void test_transport_layer_delimiter_found_too_early_error()
     // Initializes the tested class
     StreamMock<50> mock_port;
     TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
-    CRCProcessor<uint8_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
@@ -1241,14 +1223,11 @@ void test_transport_layer_delimiter_found_too_early_error()
     protocol.WriteData(test_payload);
     protocol.SendData();
 
-    // Instantiates the test buffer. Delimiter is changed.
-    uint8_t test_buffer[15] = {129, 10, 5, 1, 2, 3, 4, 3, 6, 7, 3, 9, 10, 0, 0};
-
-    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(test_buffer) * 2);
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    constexpr uint16_t packet_elements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, packet_elements * sizeof(mock_port.rx_buffer[0]));
     mock_port.rx_buffer[7] = 0;  // Add delimiter value too early
-
-    // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
-    crc_class.CalculateChecksum<false>(test_buffer);
 
     // Simulates receiving data
     protocol.ReceiveData();
@@ -1258,8 +1237,6 @@ void test_transport_layer_delimiter_found_too_early_error()
         static_cast<uint8_t>(kTransportStatusCodes::kDelimiterFoundTooEarlyError),
         protocol.get_runtime_status()
     );
-    mock_port.rx_buffer[7]    = test_buffer[7];
-    mock_port.rx_buffer_index = 0;
 }
 
 /// Verifies that ReceiveData() reports kPostambleTimeoutError when the postamble is not received.
@@ -1268,7 +1245,6 @@ void test_transport_layer_postamble_timeout_error()
     // Initializes the tested class
     StreamMock<50> mock_port;
     TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
-    CRCProcessor<uint8_t> crc_class(0x07, 0x00, 0x00);
 
     // Initializes a test payload
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
@@ -1278,17 +1254,14 @@ void test_transport_layer_postamble_timeout_error()
     protocol.WriteData(test_payload);
     protocol.SendData();
 
-    // Initializes the test buffer, omitting the postamble to simulate the timeout
-    uint8_t test_buffer[15] =
-        {129, 10, 5, 1, 2, 3, 4, 3, 6, 7, 3, 9, 10, 0, 0};  // Postamble should be here but is missing
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    constexpr uint16_t packet_elements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, packet_elements * sizeof(mock_port.rx_buffer[0]));
 
-    // Writes the components to the mock class rx buffer to simulate data reception
-    // Note, adjusts the size to account for the fact mock class uses uint16 buffers
-    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(test_buffer) * 2);
-    mock_port.rx_buffer[14] = -1;  // Sets postamble byte 8 to an 'invalid' value
-
-    // Calculates and adds packet CRC checksum to the postamble section of the test_buffer to avoid CRC check error
-    crc_class.CalculateChecksum<false>(test_buffer);
+    // Invalidates the single postamble byte, so the parser reaches the delimiter and then stalls waiting for the
+    // checksum that never arrives.
+    mock_port.rx_buffer[14] = -1;
 
     // Simulates receiving data
     protocol.ReceiveData();
@@ -1298,8 +1271,6 @@ void test_transport_layer_postamble_timeout_error()
         static_cast<uint8_t>(kTransportStatusCodes::kPostambleTimeoutError),
         protocol.get_runtime_status()
     );
-    mock_port.rx_buffer[14]   = test_buffer[14];
-    mock_port.rx_buffer_index = 0;
 }
 
 /// Verifies that ReceiveData() consumes exactly kPostambleSize bytes of the CRC checksum postamble.
@@ -1319,7 +1290,6 @@ void test_transport_layer_postamble_size_boundary()
 
     // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
     // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
-    // Note, adjusts the size to account for the fact mock class uses uint16 buffers
     constexpr uint16_t packet_elements = 15;
     memcpy(mock_port.rx_buffer, mock_port.tx_buffer, packet_elements * sizeof(mock_port.rx_buffer[0]));
 
@@ -1350,9 +1320,10 @@ void test_transport_layer_empty_payload_error()
     TransportLayer<uint8_t, 50, 50> protocol(mock_port, 0x07, 0x00, 0x00);
 
     // Sends without staging a payload first
-    protocol.SendData();
+    bool send_status = protocol.SendData();
 
     // Verifies that the transmission was rejected
+    TEST_ASSERT_FALSE(send_status);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kEmptyPayloadError),
         protocol.get_runtime_status()
@@ -1364,11 +1335,13 @@ void test_transport_layer_empty_payload_error()
     // Verifies that a staged payload is transmitted normally
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
     protocol.WriteData(test_payload);
-    protocol.SendData();
+    send_status = protocol.SendData();
+    TEST_ASSERT_TRUE(send_status);
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
 
     // Verifies that sending again is rejected, as SendData() resets the transmission buffer after each transmission
-    protocol.SendData();
+    send_status = protocol.SendData();
+    TEST_ASSERT_FALSE(send_status);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kEmptyPayloadError),
         protocol.get_runtime_status()
@@ -1386,9 +1359,10 @@ void test_transport_layer_partial_send_error()
     const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
 
     protocol.WriteData(test_payload);
-    protocol.SendData();
+    const bool send_status = protocol.SendData();
 
     // Verifies that the truncated transmission was reported
+    TEST_ASSERT_FALSE(send_status);
     TEST_ASSERT_EQUAL_UINT8(
         static_cast<uint8_t>(kTransportStatusCodes::kPacketPartiallySent),
         protocol.get_runtime_status()

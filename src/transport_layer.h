@@ -320,26 +320,30 @@ class TransportLayer final
          * @warning This method resets the instance's transmission buffer after attempting to transmit the data,
          * discarding any data stored inside the buffer.
          *
-         * @note The outcome is recorded in the runtime status and can be retrieved via get_runtime_status(). It is
-         * kPacketSent on success, kEmptyPayloadError when the payload is empty, and kPacketPartiallySent when the
+         * @note On failure, the specific reason is recorded in the runtime status and can be retrieved via
+         * get_runtime_status(). It is kEmptyPayloadError when the payload is empty and kPacketPartiallySent when the
          * communication interface accepts only a part of the packet.
+         *
+         * @returns true if the packet was transmitted in full and false otherwise.
          */
-        void SendData()
+        bool SendData()
         {
             // Aborts the transmission if the payload is empty, as the protocol reserves the payload size of 0 as an
             // invalid value that every receiver rejects.
             if (_transmission_buffer[kBufferLayout::kPayloadSizeIndex] < kBufferLayout::kMinimumPayloadSize)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kEmptyPayloadError);
-                return;
+                return false;
             }
 
             const uint16_t combined_size = ConstructPacket();
             const size_t bytes_written   = _port.write(_transmission_buffer, combined_size);
 
-            // Distinguishes a complete transmission from a truncated one. The transmission buffer holds the encoded
-            // packet at this point, so the caller has to stage the payload again to retry a truncated transmission.
-            if (bytes_written == combined_size)
+            // Distinguishes a complete transmission from a truncated one. The transmission buffer is reset either way,
+            // so the caller has to stage the payload again to retry a truncated transmission.
+            const bool packet_sent = bytes_written == combined_size;
+
+            if (packet_sent)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPacketSent);
             }
@@ -349,6 +353,8 @@ class TransportLayer final
             }
 
             ResetTransmissionBuffer();
+
+            return packet_sent;
         }
 
         /**
@@ -700,7 +706,7 @@ class TransportLayer final
             }
 
             // Packet reception stalled (timed out)
-            if (timeout_timer >= kTimeout)
+            if (timeout_timer >= kTimeout && bytes_read < postamble_size)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPostambleTimeoutError);
                 return false;

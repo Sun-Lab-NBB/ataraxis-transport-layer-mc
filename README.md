@@ -76,7 +76,7 @@ ___
 ### Platformio
 
 1. Navigate to the project’s platformio.ini file and add the following line to the target environment specification:
-   `lib_deps = inkaros/ataraxis-transport-layer-mc@^3.0.0`.
+   `lib_deps = inkaros/ataraxis-transport-layer-mc@^4.0.0`.
 2. Add `#include <transport_layer.h>` to the top of the file(s) that need to access the library API.
 
 ___

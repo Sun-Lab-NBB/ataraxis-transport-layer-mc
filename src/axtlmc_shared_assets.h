@@ -7,8 +7,6 @@
 #ifndef AXTLMC_SHARED_ASSETS_H
 #define AXTLMC_SHARED_ASSETS_H
 
-#include <Arduino.h>
-
 /**
  * @brief Defines the type for a structure that uses the packed memory layout.
  *
@@ -19,6 +17,8 @@
 #else
 #define PACKED_STRUCT
 #endif
+
+#include <Arduino.h>
 
 /**
  * @namespace axtlmc_shared_assets
@@ -85,8 +85,8 @@ namespace axtlmc_shared_assets
      *
      * Compares two types at compile-time.
      *
-     * @tparam T The first type.
-     * @tparam U The second type.
+     * @tparam T the first type.
+     * @tparam U the second type.
      */
     template <typename T, typename U>
     struct is_same
@@ -100,7 +100,7 @@ namespace axtlmc_shared_assets
      *
      * Activates when both type parameters resolve to the same type.
      *
-     * @tparam T The type to compare.
+     * @tparam T the type to compare.
      */
     template <typename T>
     struct is_same<T, T>
@@ -115,11 +115,11 @@ namespace axtlmc_shared_assets
      * Enables compile-time type equality checks without explicitly accessing the `value` member of the `is_same`
      * struct.
      *
-     * @tparam T The first type.
-     * @tparam U The second type.
+     * @tparam T the first type.
+     * @tparam U the second type.
      */
     template <typename T, typename U>
     constexpr bool is_same_v = is_same<T, U>::value;  // NOLINT(*-dynamic-static-initializers)
 }  // namespace axtlmc_shared_assets
 
-#endif  //AXTLMC_SHARED_ASSETS_H
+#endif  // AXTLMC_SHARED_ASSETS_H

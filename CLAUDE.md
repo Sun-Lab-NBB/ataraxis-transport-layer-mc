@@ -14,34 +14,39 @@ This ensures you:
 
 You MUST invoke the appropriate style skill before performing ANY of the following tasks:
 
-| Task                                   | Skill to invoke    |
-|----------------------------------------|--------------------|
-| Writing or modifying C++ code          | `/cpp-style`       |
-| Writing or modifying README files      | `/readme-style`    |
-| Writing or modifying Sphinx docs files | `/api-docs`        |
-| Writing or modifying tox.ini           | `/tox-config`      |
-| Writing git commit messages            | `/commit`          |
-| Writing or modifying skill files       | `/skill-design`    |
+| Task                                                | Skill to invoke      |
+|-----------------------------------------------------|----------------------|
+| Writing or modifying C++ code                       | `/cpp-style`         |
+| Writing or modifying README files                   | `/readme-style`      |
+| Writing or modifying Sphinx docs files              | `/api-docs`          |
+| Writing or modifying tox.ini                        | `/tox-config`        |
+| Writing or modifying platformio.ini or library.json | `/platformio-config` |
+| Writing git commit messages                         | `/commit`            |
+| Writing or modifying skill files                    | `/skill-design`      |
 
 Each skill contains a verification checklist that you MUST complete before submitting any work. Failure to invoke the
 appropriate skill results in style violations.
 
 ## Available skills
 
-| Skill                    | Description                                                                    |
-|--------------------------|--------------------------------------------------------------------------------|
-| `/explore-codebase`      | Perform in-depth codebase exploration at session start                         |
-| `/cpp-style`             | Apply Ataraxis framework C++ coding conventions (REQUIRED for all C++ changes) |
-| `/readme-style`          | Apply Ataraxis framework README conventions (REQUIRED for README changes)      |
-| `/api-docs`              | Apply Ataraxis framework API documentation conventions                         |
-| `/tox-config`            | Apply Ataraxis framework tox.ini configuration conventions                     |
-| `/project-layout`        | Apply Ataraxis framework project directory structure conventions               |
-| `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions             |
-| `/audit-facts`           | Audit documentation files for factual accuracy against the source code         |
-| `/audit-style`           | Audit source, configuration, and documentation files for style compliance      |
-| `/commit`                | Draft Ataraxis framework style-compliant git commit messages                   |
-| `/pr`                    | Draft Ataraxis framework style-compliant pull request summaries                |
-| `/release`               | Draft Ataraxis framework style-compliant release notes                         |
+| Skill                | Description                                                                    |
+|----------------------|--------------------------------------------------------------------------------|
+| `/explore-codebase`  | Perform in-depth codebase exploration at session start                         |
+| `/cpp-style`         | Apply Ataraxis framework C++ coding conventions (REQUIRED for all C++ changes) |
+| `/readme-style`      | Apply Ataraxis framework README conventions (REQUIRED for README changes)      |
+| `/api-docs`          | Apply Ataraxis framework API documentation conventions                         |
+| `/tox-config`        | Apply Ataraxis framework tox.ini configuration conventions                     |
+| `/platformio-config` | Apply Ataraxis framework platformio.ini and library.json conventions           |
+| `/project-layout`    | Apply Ataraxis framework project directory structure conventions               |
+| `/skill-design`      | Generate and verify skill files and CLAUDE.md project instructions             |
+| `/audit-correctness` | Audit source code for active and latent bugs and broken stated contracts       |
+| `/audit-facts`       | Audit documentation files for factual accuracy against the source code         |
+| `/audit-performance` | Audit source code for speed, memory use, and dtype predictability              |
+| `/audit-style`       | Audit source, configuration, and documentation files for style compliance      |
+| `/audit-project`     | Orchestrate all four audits and merge their findings into one report           |
+| `/commit`            | Draft Ataraxis framework style-compliant git commit messages                   |
+| `/pr`                | Draft Ataraxis framework style-compliant pull request summaries                |
+| `/release`           | Draft Ataraxis framework style-compliant release notes                         |
 
 ## Companion library synchronization
 
@@ -69,7 +74,7 @@ in `ataraxis-transport-layer-pc`, and vice versa.
 **What requires synchronization:**
 - Packet format fields (start byte, delimiter, payload size encoding, CRC postamble)
 - COBS encoding/decoding algorithm
-- CRC polynomial, initial value, final XOR value, and lookup table generation
+- CRC polynomial, initial value, final XOR value, reflection flag, and lookup table generation
 - `kTransportStatusCodes` values and meanings
 - Buffer size calculations and payload size constraints
 - Data serialization byte ordering and type representations
@@ -90,12 +95,12 @@ applications with microsecond-level communication speeds, optimized for the
 
 ### Key areas
 
-| Directory    | Purpose                                                       |
-|--------------|---------------------------------------------------------------|
-| `src/`       | Header-only library source code (5 headers + main.cpp)        |
-| `test/`      | Unity test suite for all library components                   |
-| `examples/`  | Quickstart example (`rx_tx_loop.cpp`)                         |
-| `docs/`      | Sphinx + Breathe documentation source (consumes Doxygen XML)  |
+| Directory   | Purpose                                                      |
+|-------------|--------------------------------------------------------------|
+| `src/`      | Header-only library source code (5 headers + main.cpp)       |
+| `test/`     | Unity test suite for all library components                  |
+| `examples/` | Quickstart example (`rx_tx_loop.cpp`)                        |
+| `docs/`     | Sphinx + Breathe documentation source (consumes Doxygen XML) |
 
 ### Architecture
 
@@ -104,12 +109,13 @@ applications with microsecond-level communication speeds, optimized for the
   and multi-stage packet parsing with a fixed 10 ms reception timeout. Templated on CRC polynomial type and buffer
   sizes.
 - **COBSProcessor** (`cobs_processor.h`): Static methods for in-place Consistent Overhead Byte Stuffing encoding and
-  decoding. Internal component used by TransportLayer; not intended for direct use.
+  decoding. Internal component used by TransportLayer, not intended for direct use.
 - **CRCProcessor** (`crc_processor.h`): Templated class for CRC-8/16/32 checksum computation using a precomputed
-  256-entry lookup table. Supports configurable polynomial, initial value, and final XOR value.
-- **Shared assets** (`axtlmc_shared_assets.h`): Namespace `axtlmc_shared_assets` containing `kTransportStatusCodes`
-  enum, `kBufferLayout` struct with protocol constants, `PACKED_STRUCT` macro, and reimplemented type traits for
-  Arduino Mega compatibility.
+  256-entry lookup table. Supports a configurable polynomial, initial value, final XOR value, and reflection flag
+  (LSB-first computation with a least-significant-byte-first checksum postamble).
+- **Shared assets** (`axtlmc_shared_assets.h`): The file-scope `PACKED_STRUCT` macro plus the `axtlmc_shared_assets`
+  namespace, which contains the `kTransportStatusCodes` enum, the `kBufferLayout` struct with protocol constants, and
+  reimplemented type traits for Arduino Mega compatibility.
 - **StreamMock** (`stream_mock.h`): Templated mock of the Arduino `Stream` interface with publicly exposed reception
   and transmission buffers. Enables full unit testing without hardware.
 
@@ -148,20 +154,20 @@ applications with microsecond-level communication speeds, optimized for the
 
 ### Dependencies
 
-| Library       | Purpose                                                        | Platforms                |
-|---------------|----------------------------------------------------------------|--------------------------|
-| Arduino.h     | Core Arduino framework (Serial, Stream, types)                 | All                      |
-| elapsedMillis | Non-blocking timer for reception timeout on non-Teensy boards  | atmelsam, atmelavr       |
+| Library       | Purpose                                                       | Platforms          |
+|---------------|---------------------------------------------------------------|--------------------|
+| Arduino.h     | Core Arduino framework (Serial, Stream, types)                | All                |
+| elapsedMillis | Non-blocking timer for reception timeout on non-Teensy boards | atmelsam, atmelavr |
 
 ### Build system
 
 This is a PlatformIO library project. The `platformio.ini` defines three board environments:
 
-| Environment | Board          | Platform   | Monitor speed |
-|-------------|----------------|------------|---------------|
-| `teensy41`  | Teensy 4.1     | teensy     | 115200        |
-| `due`       | Arduino Due    | atmelsam   | 5250000       |
-| `mega`      | Arduino Mega   | atmelavr   | 1000000       |
+| Environment | Board        | Platform | Monitor speed |
+|-------------|--------------|----------|---------------|
+| `teensy41`  | Teensy 4.1   | teensy   | 115200        |
+| `due`       | Arduino Due  | atmelsam | 5250000       |
+| `mega`      | Arduino Mega | atmelavr | 1000000       |
 
 All environments use the Arduino framework, Unity test framework, and `-std=c++17` build flag.
 
@@ -183,15 +189,15 @@ tox -e docs                      # Build Sphinx API documentation (Doxygen + Bre
 1. Review `src/transport_layer.h` for the current implementation
 2. Understand the dual-buffer architecture and packet format (start byte, payload size, COBS overhead, payload,
    delimiter, CRC checksum)
-3. Methods report errors via status codes (returned as `bool`/`void`, recorded in the runtime status) — do not
+3. Methods report errors via status codes (returned as `bool`/`void`, recorded in the runtime status). Do not
    introduce exception-based error handling
-4. Parameters must match the companion `ataraxis-transport-layer-pc` Python library exactly; mismatches cause
+4. Parameters must match the companion `ataraxis-transport-layer-pc` Python library exactly. Mismatches cause
    unrecoverable packet corruption
 
 **Modifying COBS or CRC processing:**
 
 1. Review the corresponding processor header (`cobs_processor.h` or `crc_processor.h`)
-2. These are internal components — their APIs are consumed only by `TransportLayer`
+2. These are internal components, and their APIs are consumed only by `TransportLayer`
 3. COBS enforces a 254-byte maximum payload size (protocol hard limit)
 4. CRC lookup tables are computed at construction and persist for the instance lifetime (256-1024 bytes RAM)
 
@@ -207,4 +213,4 @@ tox -e docs                      # Build Sphinx API documentation (Doxygen + Bre
 - RAM budget: up to 524 bytes for staging buffers + up to 1024 bytes for CRC lookup table
 - The `using namespace axtlmc_shared_assets;` in source files is intentional for readability in the embedded context
 - The reimplemented type traits in `axtlmc_shared_assets.h` exist because Arduino Mega lacks the `<type_traits>` header
-- `library.json` controls what gets exported to the PlatformIO registry — `main.cpp` is explicitly excluded
+- `library.json` controls what gets exported to the PlatformIO registry, and `main.cpp` is explicitly excluded

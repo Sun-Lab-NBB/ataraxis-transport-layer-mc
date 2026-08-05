@@ -11,6 +11,12 @@
 #include <Arduino.h>
 #include <Stream.h>
 
+/// Stores the default number of elements to use for the mock reception and transmission buffers.
+static constexpr uint16_t kDefaultStreamBufferSize = 300;
+
+/// Stores the largest value that fits in a byte, used to reject buffer entries outside the valid range.
+static constexpr int16_t kMaximumByteValue = 255;
+
 /**
  * @brief Simulates a Serial Stream interface by publicly exposing the reception and transmission buffers, their
  * index trackers, and the buffer-size constant for testing.
@@ -20,7 +26,7 @@
  *
  * @tparam kBufferSize the size, in elements, to use for the transmission and reception buffers.
  */
-template <const uint16_t kBufferSize = 300>
+template <const uint16_t kBufferSize = kDefaultStreamBufferSize>
 class StreamMock final : public Stream
 {
         static_assert(kBufferSize > 0, "StreamMock buffer size must be greater than zero.");
@@ -53,7 +59,7 @@ class StreamMock final : public Stream
         /**
          * @brief Reads one value ('byte') from the reception buffer.
          *
-         * @note A successful read advances the reception index, consuming the value; a -1 return leaves it unchanged.
+         * @note A successful read advances the reception index, consuming the value. A -1 return leaves it unchanged.
          *
          * @returns the read value as a byte-range integer, or -1 if no valid values are available.
          */
@@ -66,7 +72,7 @@ class StreamMock final : public Stream
             }
 
             // Returns -1 if the value at the current index is outside the valid uint8_t range.
-            if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > 255)
+            if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > kMaximumByteValue)
             {
                 return -1;
             }
@@ -79,10 +85,9 @@ class StreamMock final : public Stream
         /**
          * @brief Transfers the specified number of values (bytes) from the reception buffer to the input buffer.
          *
-         * @note Unlike the readBytes() Stream class method, this method does not use a timeout timer and instead runs
-         * either until it processes the requested number of elements, an 'invalid' value is encountered, or there is no
-         * more data to process. Each consumed byte advances the reception index, so the returned count may be any value
-         * between 0 and length.
+         * @note The method runs until it processes the requested number of elements, encounters an invalid value, or
+         * exhausts the buffered data. Each consumed byte advances the reception index, so the returned count may be any
+         * value between 0 and length.
          *
          * @param buffer the buffer where to transfer the read bytes.
          * @param length the number of bytes to read.
@@ -97,7 +102,7 @@ class StreamMock final : public Stream
             while (bytes_read < length && rx_buffer_index < sizeof(rx_buffer) / sizeof(rx_buffer[0]))
             {
                 // Breaks out of the loop if an invalid value is encountered.
-                if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > 255)
+                if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > kMaximumByteValue)
                 {
                     break;
                 }
@@ -163,7 +168,7 @@ class StreamMock final : public Stream
             // invalid value.
             for (size_t index = rx_buffer_index; index < sizeof(rx_buffer) / sizeof(rx_buffer[0]); ++index)
             {
-                if (rx_buffer[index] < 0 || rx_buffer[index] > 255)
+                if (rx_buffer[index] < 0 || rx_buffer[index] > kMaximumByteValue)
                 {
                     break;
                 }
@@ -187,7 +192,7 @@ class StreamMock final : public Stream
             }
 
             // Returns -1 if the value at the current index is outside the valid uint8_t range.
-            if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > 255)
+            if (rx_buffer[rx_buffer_index] < 0 || rx_buffer[rx_buffer_index] > kMaximumByteValue)
             {
                 return -1;
             }
@@ -206,7 +211,7 @@ class StreamMock final : public Stream
         }
 
         /// Resets the transmission and reception buffers by filling them with the -1 invalid-value sentinel.
-        void reset()
+        void Reset()
         {
             memset(rx_buffer, -1, sizeof(rx_buffer));
             memset(tx_buffer, -1, sizeof(tx_buffer));
@@ -214,8 +219,9 @@ class StreamMock final : public Stream
             tx_buffer_index = 0;
         }
 
-        /// Defaults the destructor.
+        /// Defaults the destructor. Uses the 'virtual' form rather than 'override', because the Arduino Print base
+        /// class declares no virtual destructor on any supported architecture, so 'override' fails to compile.
         virtual ~StreamMock() = default;
 };
 
-#endif  //AXTLMC_STREAM_MOCK_H
+#endif  // AXTLMC_STREAM_MOCK_H

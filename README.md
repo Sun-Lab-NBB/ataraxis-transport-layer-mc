@@ -184,9 +184,8 @@ There are two key methods associated with sending data to the PC:
   transmission buffer.
 - The `SendData()` method encodes the payload stored in the transmission buffer into a packet using COBS, calculates
   and adds the CRC checksum to the encoded packet, and transmits the packet to the PC. At least one byte of data
-  should be written to the transmission buffer via the WriteData() method before SendData() is called. The method
-  returns True once the whole packet reaches the communication interface, and False otherwise, in which case
-  get_runtime_status() carries the reason.
+  should be written to the transmission buffer via the WriteData() method before SendData() is called; transmitting an
+  empty payload produces a packet that the receiver rejects.
 
 The example below showcases the sequence of steps necessary to send the data to the PC and assumes TransportLayer 
 'tl_class' was initialized following the steps in the [Quickstart](#quickstart) example:
@@ -198,9 +197,8 @@ const uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
 // and 'false' otherwise.
 bool write_status = tl_class.WriteData(test_array);
 
-// Constructs and hands the packet to the communication interface to be transmitted to the PC. The method returns
-// 'false' if the packet was not transmitted in full, in which case get_runtime_status() carries the reason.
-bool send_status = tl_class.SendData();
+// Constructs and hands the packet to the communication interface to be transmitted to the PC.
+tl_class.SendData();  // This method does not have expected failure states to evaluate, so it does not return anything.
 ```
 
 ***Note,*** the transmission buffer is reset when the data is transmitted or via the call to the 

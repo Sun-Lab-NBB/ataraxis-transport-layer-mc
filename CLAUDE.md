@@ -14,15 +14,14 @@ This ensures you:
 
 You MUST invoke the appropriate style skill before performing ANY of the following tasks:
 
-| Task                                                | Skill to invoke      |
-|-----------------------------------------------------|----------------------|
-| Writing or modifying C++ code                       | `/cpp-style`         |
-| Writing or modifying README files                   | `/readme-style`      |
-| Writing or modifying Sphinx docs files              | `/api-docs`          |
-| Writing or modifying tox.ini                        | `/tox-config`        |
-| Writing or modifying platformio.ini or library.json | `/platformio-config` |
-| Writing git commit messages                         | `/commit`            |
-| Writing or modifying skill files                    | `/skill-design`      |
+| Task                                   | Skill to invoke    |
+|----------------------------------------|--------------------|
+| Writing or modifying C++ code          | `/cpp-style`       |
+| Writing or modifying README files      | `/readme-style`    |
+| Writing or modifying Sphinx docs files | `/api-docs`        |
+| Writing or modifying tox.ini           | `/tox-config`      |
+| Writing git commit messages            | `/commit`          |
+| Writing or modifying skill files       | `/skill-design`    |
 
 Each skill contains a verification checklist that you MUST complete before submitting any work. Failure to invoke the
 appropriate skill results in style violations.
@@ -36,7 +35,6 @@ appropriate skill results in style violations.
 | `/readme-style`          | Apply Ataraxis framework README conventions (REQUIRED for README changes)      |
 | `/api-docs`              | Apply Ataraxis framework API documentation conventions                         |
 | `/tox-config`            | Apply Ataraxis framework tox.ini configuration conventions                     |
-| `/platformio-config`     | Apply Ataraxis framework platformio.ini and library.json conventions           |
 | `/project-layout`        | Apply Ataraxis framework project directory structure conventions               |
 | `/skill-design`          | Generate and verify skill files and CLAUDE.md project instructions             |
 | `/audit-facts`           | Audit documentation files for factual accuracy against the source code         |
@@ -71,7 +69,7 @@ in `ataraxis-transport-layer-pc`, and vice versa.
 **What requires synchronization:**
 - Packet format fields (start byte, delimiter, payload size encoding, CRC postamble)
 - COBS encoding/decoding algorithm
-- CRC polynomial, initial value, final XOR value, reflection flag, and lookup table generation
+- CRC polynomial, initial value, final XOR value, and lookup table generation
 - `kTransportStatusCodes` values and meanings
 - Buffer size calculations and payload size constraints
 - Data serialization byte ordering and type representations
@@ -108,11 +106,10 @@ applications with microsecond-level communication speeds, optimized for the
 - **COBSProcessor** (`cobs_processor.h`): Static methods for in-place Consistent Overhead Byte Stuffing encoding and
   decoding. Internal component used by TransportLayer; not intended for direct use.
 - **CRCProcessor** (`crc_processor.h`): Templated class for CRC-8/16/32 checksum computation using a precomputed
-  256-entry lookup table. Supports a configurable polynomial, initial value, final XOR value, and reflection flag
-  (LSB-first computation with a least-significant-byte-first checksum postamble).
-- **Shared assets** (`axtlmc_shared_assets.h`): The file-scope `PACKED_STRUCT` macro plus the `axtlmc_shared_assets`
-  namespace, which contains the `kTransportStatusCodes` enum, the `kBufferLayout` struct with protocol constants, and
-  reimplemented type traits for Arduino Mega compatibility.
+  256-entry lookup table. Supports configurable polynomial, initial value, and final XOR value.
+- **Shared assets** (`axtlmc_shared_assets.h`): Namespace `axtlmc_shared_assets` containing `kTransportStatusCodes`
+  enum, `kBufferLayout` struct with protocol constants, `PACKED_STRUCT` macro, and reimplemented type traits for
+  Arduino Mega compatibility.
 - **StreamMock** (`stream_mock.h`): Templated mock of the Arduino `Stream` interface with publicly exposed reception
   and transmission buffers. Enables full unit testing without hardware.
 

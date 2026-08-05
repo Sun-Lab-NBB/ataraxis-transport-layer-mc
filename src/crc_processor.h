@@ -299,9 +299,12 @@ class CRCProcessor final
             // bytes, and the CRC postamble length when verifying.
             const uint16_t end_index = kStartIndex + buffer[kBufferLayout::kPayloadSizeIndex] + 2 + kAdjustment;
 
-            for (uint16_t index = kStartIndex; index < end_index; index++)
+            // Walks the processed region with a pointer rather than an index, which spares the loop the per-byte
+            // address arithmetic that recovering the byte from a narrower index would otherwise require.
+            const uint8_t* const packet_end = buffer + end_index;
+            for (const uint8_t* current_byte = buffer + kStartIndex; current_byte < packet_end; ++current_byte)
             {
-                crc_checksum = UpdateChecksum<kReflected>(crc_checksum, buffer[index]);
+                crc_checksum = UpdateChecksum<kReflected>(crc_checksum, *current_byte);
             }
 
             // Applies the final XOR operation to the checksum. The exact algorithmic purpose depends on the specific

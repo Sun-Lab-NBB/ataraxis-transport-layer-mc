@@ -377,6 +377,10 @@ class TransportLayer final
          *
          * @note The size of the received payload can be queried using the get_bytes_in_reception_buffer() method.
          *
+         * @note The method abandons a packet whose bytes stall for about 10 milliseconds. The window it enforces falls
+         * a few microseconds below that figure, which leaves it far above the inter-byte spacing every supported
+         * interface produces.
+         *
          * @note On failure, the specific reason is recorded in the runtime status and can be retrieved via
          * get_runtime_status().
          *
@@ -451,8 +455,7 @@ class TransportLayer final
             );
 
             // Updates the payload size tracker to reflect the increased payload size.
-            _transmission_buffer[kBufferLayout::kPayloadSizeIndex] =
-                max(_transmission_buffer[kBufferLayout::kPayloadSizeIndex], static_cast<uint8_t>(payload_size));
+            _transmission_buffer[kBufferLayout::kPayloadSizeIndex] = static_cast<uint8_t>(payload_size);
 
             _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kObjectWrittenToBuffer);
             return true;
@@ -518,6 +521,10 @@ class TransportLayer final
     private:
         /// The maximum number of microseconds (us) to wait between receiving any two consecutive bytes of the packet
         /// before declaring the packet stale. This prevents the runtime from getting stuck in the reception cycle.
+        /// @note The reception loops rebase the stall timer to the instant they sampled that timer, rather than to the
+        /// instant the byte arrived. The window they enforce is therefore shorter than this value by the cost of one
+        /// availability poll and one byte read, which is a few microseconds against this budget. The shortfall does
+        /// not accumulate across the packet, because every received byte rebases the timer again.
         static constexpr uint32_t kTimeout = 10000;  // 10 ms.
 
         /// Stores the size of the CRC checksum postamble, in bytes.
@@ -662,20 +669,23 @@ class TransportLayer final
             // value is encountered, or the payload is fully received.
             bool delimiter_found = false;
             timeout_timer        = 0;
-            while (timeout_timer < kTimeout && bytes_read < packet_size)
+            while (bytes_read < packet_size)
             {
-                if (_port.available())
-                {
-                    const uint8_t byte_value      = _port.read();
-                    _reception_buffer[bytes_read] = byte_value;
-                    bytes_read++;
-                    timeout_timer = 0;
+                // Samples the stall time once per cycle. Rebasing the timer by this sample restarts the stall window
+                // without reading the microsecond counter a second time, which assigning zero would require.
+                const uint32_t stall_time = timeout_timer;
+                if (stall_time >= kTimeout) break;
+                if (!_port.available()) continue;
 
-                    if (byte_value == kBufferLayout::kDelimiterByte)
-                    {
-                        delimiter_found = true;
-                        break;
-                    }
+                const uint8_t byte_value      = _port.read();
+                _reception_buffer[bytes_read] = byte_value;
+                bytes_read++;
+                timeout_timer -= stall_time;
+
+                if (byte_value == kBufferLayout::kDelimiterByte)
+                {
+                    delimiter_found = true;
+                    break;
                 }
             }
 
@@ -703,14 +713,15 @@ class TransportLayer final
             // Parses the CRC postamble. The CRC bytes should be received immediately after the packet delimiter byte.
             const uint16_t postamble_size = packet_size + static_cast<uint16_t>(kPostambleSize);
             timeout_timer                 = 0;
-            while (timeout_timer < kTimeout && bytes_read < postamble_size)
+            while (bytes_read < postamble_size)
             {
-                if (_port.available())
-                {
-                    _reception_buffer[bytes_read] = _port.read();
-                    bytes_read++;
-                    timeout_timer = 0;
-                }
+                const uint32_t stall_time = timeout_timer;
+                if (stall_time >= kTimeout) break;
+                if (!_port.available()) continue;
+
+                _reception_buffer[bytes_read] = _port.read();
+                bytes_read++;
+                timeout_timer -= stall_time;
             }
 
             // Packet reception stalled (timed out).

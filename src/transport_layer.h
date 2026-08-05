@@ -129,22 +129,28 @@ class TransportLayer final
          *
          * @note The constructor seeds the transmission buffer's first byte with the protocol start byte value.
          *
+         * @note The checksum parameters are expressed in the standard non-reflected, MSB-aligned form used by published
+         * CRC parameter catalogues. Reflected variants are selected through the crc_reflected flag, so a catalogue
+         * entry is transcribed without any manual bit reversal.
+         *
          * @param communication_port The initialized communication interface instance, such as Serial or USB Serial.
-         * @param crc_polynomial The polynomial to use for the generation of the CRC lookup table. The polynomial must
-         * be standard (non-reflected / non-reversed). Defaults to 0x07.
+         * @param crc_polynomial The polynomial to use for the generation of the CRC lookup table. Defaults to 0x07.
          * @param crc_initial_value The value to which the CRC checksum is initialized before calculation. Defaults to
          * 0x00.
          * @param crc_final_xor_value The value with which the CRC checksum is XORed after calculation. Defaults to
          * 0x00.
+         * @param crc_reflected Determines whether the checksum is computed least significant bit first and written to
+         * the packet postamble least significant byte first. Defaults to false.
          */
         explicit TransportLayer(
             Stream& communication_port,
             const PolynomialType crc_polynomial      = 0x07,
             const PolynomialType crc_initial_value   = 0x00,
-            const PolynomialType crc_final_xor_value = 0x00
+            const PolynomialType crc_final_xor_value = 0x00,
+            const bool crc_reflected                 = false
         ) :
             _port(communication_port),
-            _crc_processor(crc_polynomial, crc_initial_value, crc_final_xor_value),
+            _crc_processor(crc_polynomial, crc_initial_value, crc_final_xor_value, crc_reflected),
             _transmission_buffer {},
             _reception_buffer {}
         {

@@ -252,6 +252,9 @@ class TransportLayer final
             _reception_buffer[kBufferLayout::kPayloadSizeIndex] =
                 _transmission_buffer[kBufferLayout::kPayloadSizeIndex];
 
+            // Rewinds the read cursor, so that the copied payload is consumed from its first byte.
+            _consumed_payload_bytes = 0;
+
             return true;
         }
 
@@ -308,14 +311,37 @@ class TransportLayer final
          * @brief Packages the data inside the instance's transmission buffer into a serialized packet and transmits it
          * over the communication interface.
          *
-         * @warning This method resets the instance's transmission buffer after transmitting the data, discarding any
-         * data stored inside the buffer.
+         * @warning This method resets the instance's transmission buffer after attempting to transmit the data,
+         * discarding any data stored inside the buffer.
+         *
+         * @note The outcome is recorded in the runtime status and can be retrieved via get_runtime_status(). It is
+         * kPacketSent on success, kEmptyPayloadError when the payload is empty, and kPacketPartiallySent when the
+         * communication interface accepts only a part of the packet.
          */
         void SendData()
         {
+            // Aborts the transmission if the payload is empty, as the protocol reserves the payload size of 0 as an
+            // invalid value that every receiver rejects.
+            if (_transmission_buffer[kBufferLayout::kPayloadSizeIndex] < kBufferLayout::kMinimumPayloadSize)
+            {
+                _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kEmptyPayloadError);
+                return;
+            }
+
             const uint16_t combined_size = ConstructPacket();
-            _port.write(_transmission_buffer, combined_size);
-            _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPacketSent);
+            const size_t bytes_written   = _port.write(_transmission_buffer, combined_size);
+
+            // Distinguishes a complete transmission from a truncated one. The transmission buffer holds the encoded
+            // packet at this point, so the caller has to stage the payload again to retry a truncated transmission.
+            if (bytes_written == combined_size)
+            {
+                _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPacketSent);
+            }
+            else
+            {
+                _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPacketPartiallySent);
+            }
+
             ResetTransmissionBuffer();
         }
 
@@ -365,22 +391,33 @@ class TransportLayer final
          * region lacks space for the object (the runtime status is set to kWriteObjectBufferError).
          */
         template <typename ObjectType>
-        bool WriteData(const ObjectType& object, const uint16_t object_size = sizeof(ObjectType))
+        bool WriteData(const ObjectType& object, const size_t object_size = sizeof(ObjectType))
         {
+            // Rejects objects that cannot fit into the payload region regardless of the buffer's runtime state.
+            static_assert(
+                sizeof(ObjectType) <= kMaximumTransmittedPayloadSize,
+                "TransportLayer's WriteData object size must not exceed the kMaximumTransmittedPayloadSize template "
+                "parameter."
+            );
+
             // Computes the index at which to start writing the input object's bytes based on the size of the payload
             // already stored inside the buffer.
             const auto start_index = static_cast<uint16_t>(_transmission_buffer[kBufferLayout::kPayloadSizeIndex]);
 
-            // Calculates the total size of the payload in the transmission buffer including the new bytes to be
-            // added to the buffer.
-            const uint16_t payload_size = start_index + object_size;
+            // Determines how many payload bytes the transmission buffer can still accept. Comparing the object
+            // against the remaining space keeps the check exact for objects of any size.
+            const uint16_t available_space = kMaximumTransmittedPayloadSize - start_index;
 
             // Verifies that the payload region of the buffer has enough space to accommodate the increased payload.
-            if (payload_size > kMaximumTransmittedPayloadSize)
+            if (object_size > available_space)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError);
                 return false;
             }
+
+            // Calculates the total size of the payload in the transmission buffer including the new bytes added to
+            // the buffer.
+            const auto payload_size = static_cast<uint16_t>(start_index + object_size);
 
             // Shifts the global start index to translate it from payload-centric to buffer-centric. The buffer contains
             // multiple metadata variables not exposed to the user, so any index that is relative to the payload has to
@@ -416,18 +453,25 @@ class TransportLayer final
          * unread payload bytes remain (the runtime status is set to kReadObjectBufferError).
          */
         template <typename ObjectType>
-        bool ReadData(ObjectType& object, const uint16_t object_size = sizeof(ObjectType))
+        bool ReadData(ObjectType& object, const size_t object_size = sizeof(ObjectType))
         {
+            // Rejects objects that cannot fit into the payload region regardless of the buffer's runtime state.
+            static_assert(
+                sizeof(ObjectType) <= kMaximumReceivedPayloadSize,
+                "TransportLayer's ReadData object size must not exceed the kMaximumReceivedPayloadSize template "
+                "parameter."
+            );
+
             // Computes the index at which to start reading the input object's data based on the number of bytes already
             // consumed from the buffer.
             const uint16_t start_index = _consumed_payload_bytes;
 
-            // Calculates the total size of the payload necessary to accommodate reading the object at the specified
-            // index.
-            const uint16_t required_size = start_index + object_size;
+            // Determines how many unread payload bytes remain in the reception buffer. Comparing the object against
+            // the remaining bytes keeps the check exact for objects of any size.
+            const uint16_t remaining_bytes = _reception_buffer[kBufferLayout::kPayloadSizeIndex] - start_index;
 
             // Verifies that the reception buffer has enough bytes to accommodate reading the object.
-            if (required_size > _reception_buffer[kBufferLayout::kPayloadSizeIndex])
+            if (object_size > remaining_bytes)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kReadObjectBufferError);
                 return false;
@@ -445,7 +489,7 @@ class TransportLayer final
             );
 
             // Updates the consumed payload bytes tracker to reflect data consumption.
-            _consumed_payload_bytes += object_size;
+            _consumed_payload_bytes += static_cast<uint16_t>(object_size);
 
             _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kObjectReadFromBuffer);
             return true;
@@ -461,7 +505,7 @@ class TransportLayer final
 
         /// Stores the minimum number of buffered bytes required before the instance attempts to read a packet.
         static constexpr uint16_t kMinimumPacketSize = kBufferLayout::kMinimumPayloadSize +
-                                                       kBufferLayout::kOverheadByteIndex +
+                                                       kBufferLayout::kOverheadByteIndex + 2 +
                                                        kPostambleSize;  // NOLINT(*-dynamic-static-initializers)
 
         /// Stores the size of the instance's transmission staging buffer, in bytes.

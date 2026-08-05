@@ -1,8 +1,8 @@
 /**
  * @file
  *
- * @brief Provides the CRCProcessor class used to verify transmitted data integrity by calculating
- * the Cyclic Redundancy Check (CRC) checksums for the outgoing and incoming data packets.
+ * @brief Provides the CRCProcessor class used to verify transmitted data integrity by calculating the Cyclic
+ * Redundancy Check (CRC) checksums for the outgoing and incoming data packets.
  *
  * @section crc_implementation Reference Implementation:
  * The implementation in this file is based on the implementation described in the original paper:
@@ -30,7 +30,7 @@ using namespace axtlmc_shared_assets;
  * @note Each class instance computes a CRC lookup table at initialization. The table reserves 256, 512, or 1024 bytes
  * of memory depending on the type of the CRC polynomial for the entire lifetime of the instance.
  *
- * @tparam PolynomialType The datatype of the CRC polynomial used by the class instance. Valid types are uint8_t,
+ * @tparam PolynomialType the datatype of the CRC polynomial used by the class instance. Valid types are uint8_t,
  * uint16_t, and uint32_t.
  */
 template <typename PolynomialType>
@@ -51,10 +51,10 @@ class CRCProcessor final
          * published CRC parameter catalogues. Reflected instances derive the reflected polynomial and the reflected
          * initial value internally, so a catalogue entry is transcribed without any manual bit reversal.
          *
-         * @param polynomial The polynomial to use for the generation of the CRC lookup table.
-         * @param initial_value The value to which the CRC checksum is initialized before calculation.
-         * @param final_xor_value The value with which the CRC checksum is XORed after calculation.
-         * @param reflected Determines whether the instance consumes each data byte least significant bit first and
+         * @param polynomial the polynomial to use for the generation of the CRC lookup table.
+         * @param initial_value the value to which the CRC checksum is initialized before calculation.
+         * @param final_xor_value the value with which the CRC checksum is XORed after calculation.
+         * @param reflected determines whether the instance consumes each data byte least significant bit first and
          * writes the checksum postamble least significant byte first.
          */
         CRCProcessor(
@@ -77,10 +77,10 @@ class CRCProcessor final
          * Depending on configuration, this method either verifies the data's integrity based on the checksum included
          * with the data or generates and writes the new checksum value to the end of the data's region.
          *
-         * @tparam kCheck Determines whether the method is called to verify the incoming packet's data integrity or to
+         * @tparam kCheck determines whether the method is called to verify the incoming packet's data integrity or to
          * generate and write the CRC checksum to the outgoing packet's postamble section.
-         * @tparam kBufferSize The size of the input buffer.
-         * @param buffer The buffer that stores the COBS-encoded packet for which to calculate the checksum. The buffer
+         * @tparam kBufferSize the size of the input buffer.
+         * @param buffer the buffer that stores the COBS-encoded packet for which to calculate the checksum. The buffer
          * must conform to kBufferLayout, with a valid payload-size byte read to determine the processing range.
          *
          * @returns the total number of bytes occupied in the buffer, including the appended CRC checksum, when
@@ -108,6 +108,15 @@ class CRCProcessor final
         /// Stores the size of the CRC polynomial in bytes.
         static constexpr uint8_t kCRCByteLength = sizeof(PolynomialType);  // NOLINT(*-dynamic-static-initializers)
 
+        /// Stores the number of entries in the CRC lookup table, which covers every possible value of a data byte.
+        static constexpr uint16_t kTableSize = 256;
+
+        /// Stores the number of bits in a single byte, used to shift the checksum by whole bytes.
+        static constexpr uint8_t kBitsPerByte = 8;
+
+        /// Stores the mask that isolates the least significant byte of a checksum.
+        static constexpr uint8_t kByteMask = 0xFF;
+
         /// Determines whether the instance processes the packet and the checksum postamble least significant end first.
         const bool _reflected;
 
@@ -118,7 +127,7 @@ class CRCProcessor final
         const PolynomialType _final_xor_value;
 
         /// Stores the lookup table used to speed up CRC computation at runtime.
-        PolynomialType _crc_table[256];
+        PolynomialType _crc_table[kTableSize];
 
         /// Stores the checksum value that verifying an intact packet produces.
         PolynomialType _expected_residue = 0;
@@ -126,7 +135,7 @@ class CRCProcessor final
         /**
          * @brief Reverses the bit order of the input value across the full bit width of the CRC polynomial type.
          *
-         * @param value The value whose bit order to reverse.
+         * @param value the value whose bit order to reverse.
          *
          * @returns the input value with its bit order reversed.
          */
@@ -151,16 +160,15 @@ class CRCProcessor final
         /**
          * @brief Computes the CRC lookup table for the given polynomial and saves it to the _crc_table member.
          *
-         * @param polynomial The CRC polynomial to use for table generation.
+         * @param polynomial the CRC polynomial to use for table generation.
          */
         void GenerateCRCTable(const PolynomialType polynomial)
         {
-            // Determines the number of bits in the CRC type.
             static constexpr size_t kCRCBits = kCRCByteLength * 8;  // NOLINT(*-dynamic-static-initializers)
 
-            // Determines the Most Significant Bit (MSB) mask based on the CRC type.
+            // Stores the Most Significant Bit (MSB) mask for the CRC polynomial type.
             static constexpr PolynomialType kMSBMask =             // NOLINT(*-dynamic-static-initializers)
-                static_cast<PolynomialType>(1) << (kCRCBits - 1);  // Parentheses required to avoid compiler warnings
+                static_cast<PolynomialType>(1) << (kCRCBits - 1);  // Parentheses required to avoid compiler warnings.
 
             // Reflected instances divide from the least significant bit upward, which is the mirror image of the
             // division below and consumes the bit-reversed form of the polynomial.
@@ -168,15 +176,13 @@ class CRCProcessor final
             {
                 const PolynomialType reflected_polynomial = ReflectValue(polynomial);
 
-                // Iterates over each possible value of a byte variable.
-                for (uint16_t byte = 0; byte < 256; ++byte)
+                for (uint16_t byte = 0; byte < kTableSize; ++byte)
                 {
                     // Initializes the byte CRC value in the low end of the register, which is where reflected
                     // processing keeps the byte currently being divided.
                     auto crc = static_cast<PolynomialType>(byte);
 
-                    // Loops over each of the 8 bits making up the byte value being processed.
-                    for (uint8_t bit = 0; bit < 8; ++bit)
+                    for (uint8_t bit = 0; bit < kBitsPerByte; ++bit)
                     {
                         // Checks if the bottom bit (LSB) is set.
                         if (crc & 1)
@@ -193,28 +199,24 @@ class CRCProcessor final
                         }
                     }
 
-                    // Stores the calculated CRC remainder for the byte value into the lookup table.
                     _crc_table[byte] = crc;
                 }
 
                 return;
             }
 
-            // Iterates over each possible value of a byte variable.
-            for (uint16_t byte = 0; byte < 256; ++byte)
+            for (uint16_t byte = 0; byte < kTableSize; ++byte)
             {
-                // Initializes the byte CRC value based on the CRC (Polynomial) datatype.
                 auto crc = static_cast<PolynomialType>(byte);
 
                 // Shifts the CRC value left by the appropriate number of bits based on the CRC type to align the
                 // initial value to the highest byte of the CRC variable.
-                if (kCRCBits > 8)
+                if (kCRCBits > kBitsPerByte)
                 {
-                    crc <<= kCRCBits - 8;
+                    crc <<= kCRCBits - kBitsPerByte;
                 }
 
-                // Loops over each of the 8 bits making up the byte value being processed.
-                for (uint8_t bit = 0; bit < 8; ++bit)
+                for (uint8_t bit = 0; bit < kBitsPerByte; ++bit)
                 {
                     // Checks if the top bit (MSB) is set.
                     if (crc & kMSBMask)
@@ -231,7 +233,6 @@ class CRCProcessor final
                     }
                 }
 
-                // Stores the calculated CRC remainder for the byte value into the lookup table.
                 _crc_table[byte] = crc;
             }
         }
@@ -252,15 +253,15 @@ class CRCProcessor final
 
             // Feeds the final XOR value through a zeroed checksum register, mirroring the way verification consumes
             // the checksum postamble appended to the packet.
-            for (uint8_t i = 0; i < kCRCByteLength; ++i)
+            for (uint8_t byte_index = 0; byte_index < kCRCByteLength; ++byte_index)
             {
                 if (_reflected)
                 {
-                    residue = UpdateChecksum<true>(residue, ExtractChecksumByte<true>(_final_xor_value, i));
+                    residue = UpdateChecksum<true>(residue, ExtractChecksumByte<true>(_final_xor_value, byte_index));
                 }
                 else
                 {
-                    residue = UpdateChecksum<false>(residue, ExtractChecksumByte<false>(_final_xor_value, i));
+                    residue = UpdateChecksum<false>(residue, ExtractChecksumByte<false>(_final_xor_value, byte_index));
                 }
             }
 
@@ -270,11 +271,11 @@ class CRCProcessor final
         /**
          * @brief Runs the checksum calculation over the packet stored in the input buffer.
          *
-         * @tparam kReflected Determines whether the packet and the checksum postamble are processed least significant
+         * @tparam kReflected determines whether the packet and the checksum postamble are processed least significant
          * end first.
-         * @tparam kCheck Determines whether the method verifies the packet's checksum postamble or generates it.
-         * @tparam kBufferSize The size of the input buffer.
-         * @param buffer The buffer that stores the COBS-encoded packet for which to calculate the checksum.
+         * @tparam kCheck determines whether the method verifies the packet's checksum postamble or generates it.
+         * @tparam kBufferSize the size of the input buffer.
+         * @param buffer the buffer that stores the COBS-encoded packet for which to calculate the checksum.
          *
          * @returns the total number of bytes occupied in the buffer, including the appended CRC checksum, when
          * generating a new checksum. Returns '1' when verifying data integrity and the data is intact, and '0'
@@ -283,26 +284,24 @@ class CRCProcessor final
         template <const bool kReflected, const bool kCheck, const size_t kBufferSize>
         uint16_t ProcessBuffer(uint8_t (&buffer)[kBufferSize])
         {
-            // Initializes the checksum to the initial value of the polynomial used to generate the CRC table.
             PolynomialType crc_checksum = _initial_value;
 
             // Sets the start index to the position of the overhead byte. This specializes the function to work
             // exclusively with the buffers defined in this library, similar to how COBSProcessor's methods are
             // implemented.
-            constexpr uint16_t start_index = kBufferLayout::kOverheadByteIndex;
+            constexpr uint16_t kStartIndex = kBufferLayout::kOverheadByteIndex;
 
             // Adjusts the end index to include the CRC checksum postamble when verifying data integrity, or to
             // include just the packet itself when generating a new checksum.
-            constexpr uint16_t adjustment = kCheck ? kCRCByteLength : 0;
+            constexpr uint16_t kAdjustment = kCheck ? kCRCByteLength : 0;
 
             // Calculates the end index from the start index, the payload size byte, the fixed overhead and delimiter
             // bytes, and the CRC postamble length when verifying.
-            const uint16_t end_index = start_index + buffer[kBufferLayout::kPayloadSizeIndex] + 2 + adjustment;
+            const uint16_t end_index = kStartIndex + buffer[kBufferLayout::kPayloadSizeIndex] + 2 + kAdjustment;
 
-            // Iteratively calculates the CRC checksum for each byte inside the packet.
-            for (uint16_t i = start_index; i < end_index; i++)
+            for (uint16_t index = kStartIndex; index < end_index; index++)
             {
-                crc_checksum = UpdateChecksum<kReflected>(crc_checksum, buffer[i]);
+                crc_checksum = UpdateChecksum<kReflected>(crc_checksum, buffer[index]);
             }
 
             // Applies the final XOR operation to the checksum. The exact algorithmic purpose depends on the specific
@@ -313,13 +312,11 @@ class CRCProcessor final
             // checksum. The checksum always overwrites any already existing data at the target position.
             if constexpr (!kCheck)
             {
-                // Iteratively appends each byte of the CRC checksum to the buffer.
-                for (uint8_t i = 0; i < kCRCByteLength; ++i)
+                for (uint8_t byte_index = 0; byte_index < kCRCByteLength; ++byte_index)
                 {
-                    buffer[end_index + i] = ExtractChecksumByte<kReflected>(crc_checksum, i);
+                    buffer[end_index + byte_index] = ExtractChecksumByte<kReflected>(crc_checksum, byte_index);
                 }
 
-                // Returns the total size of the data stored in the buffer, including the newly appended CRC checksum.
                 return end_index + kCRCByteLength;
             }
             else
@@ -335,9 +332,9 @@ class CRCProcessor final
         /**
          * @brief Folds the input data byte into the running checksum.
          *
-         * @tparam kReflected Determines whether the data byte is consumed least significant bit first.
-         * @param checksum The running checksum to fold the data byte into.
-         * @param data_byte The data byte to fold into the checksum.
+         * @tparam kReflected determines whether the data byte is consumed least significant bit first.
+         * @param checksum the running checksum to fold the data byte into.
+         * @param data_byte the data byte to fold into the checksum.
          *
          * @returns the checksum updated with the input data byte.
          */
@@ -350,23 +347,24 @@ class CRCProcessor final
                 // Reflected processing keeps the byte being divided in the low end of the register, so the lookup
                 // table index comes from the low byte and the register advances by shifting right.
                 const auto table_index = static_cast<uint8_t>(checksum ^ data_byte);
-                return static_cast<PolynomialType>(checksum >> 8 ^ _crc_table[table_index]);
+                return static_cast<PolynomialType>(checksum >> kBitsPerByte ^ _crc_table[table_index]);
             }
             else
             {
                 // Combines the high byte of the CRC checksum with the data byte using bitwise XOR to calculate the
                 // lookup table index, then advances the register by shifting left.
-                const auto table_index = static_cast<uint8_t>(checksum >> 8 * (kCRCByteLength - 1) ^ data_byte);
-                return static_cast<PolynomialType>(checksum << 8 ^ _crc_table[table_index]);
+                const auto table_index =
+                    static_cast<uint8_t>(checksum >> kBitsPerByte * (kCRCByteLength - 1) ^ data_byte);
+                return static_cast<PolynomialType>(checksum << kBitsPerByte ^ _crc_table[table_index]);
             }
         }
 
         /**
          * @brief Extracts the checksum byte stored at the requested postamble offset.
          *
-         * @tparam kReflected Determines whether the postamble is ordered least significant byte first.
-         * @param checksum The checksum from which to extract the byte.
-         * @param index The postamble offset of the byte to extract.
+         * @tparam kReflected determines whether the postamble is ordered least significant byte first.
+         * @param checksum the checksum from which to extract the byte.
+         * @param index the postamble offset of the byte to extract.
          *
          * @returns the checksum byte that occupies the requested postamble offset.
          */
@@ -376,10 +374,10 @@ class CRCProcessor final
         {
             // Reflected checksums occupy the postamble least significant byte first, which is the order that drives
             // the verification register to the expected residue.
-            if constexpr (kReflected) return static_cast<uint8_t>(checksum >> 8 * index & 0xFF);
+            if constexpr (kReflected) return static_cast<uint8_t>(checksum >> kBitsPerByte * index & kByteMask);
 
-            return static_cast<uint8_t>(checksum >> 8 * (kCRCByteLength - index - 1) & 0xFF);
+            return static_cast<uint8_t>(checksum >> kBitsPerByte * (kCRCByteLength - index - 1) & kByteMask);
         }
 };
 
-#endif  //AXTLMC_CRC_PROCESSOR_H
+#endif  // AXTLMC_CRC_PROCESSOR_H

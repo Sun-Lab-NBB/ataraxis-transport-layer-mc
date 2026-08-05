@@ -28,7 +28,8 @@ ___
 - Uses Consistent Overhead Byte Stuffing (COBS) to encode payloads during transmission.
 - Supports standard and reflected Cyclic Redundancy Check (CRC) 8-, 16- and 32-bit polynomials for data integrity.
 - Allows fine-tuning all library components to support a wide range of application contexts.
-- Has a [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc) PC library written in Python.
+- Has a companion PC library, [ataraxis-transport-layer-pc](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc),
+  written in Python.
 - Apache 2.0 License.
 
 ___
@@ -49,12 +50,13 @@ ___
 
 ## Dependencies
 
-- An IDE or Framework capable of uploading microcontroller software that supports 
-  [Platformio](https://platformio.org/install). This library is explicitly designed to be uploaded via Platformio and 
-  is unlikely to work with any other IDE or Framework.
+- An IDE or framework that supports [PlatformIO](https://platformio.org/install) and is capable of uploading
+  microcontroller software. This library is explicitly designed to be uploaded via PlatformIO and is unlikely to work
+  with any other IDE or framework.
 
-***Note,*** developers should see the [Developers](#developers) section for information on installing additional
-development dependencies.
+For users, all other library dependencies are installed automatically by all supported installation methods. For
+developers, see the [Developers](#developers) section for information on installing additional development
+dependencies.
 
 ___
 
@@ -110,8 +112,9 @@ received serialized payloads, since packet metadata cannot be accessed or manipu
 
 #### Quickstart
 This minimal example demonstrates how to use this library to send and receive data. It is designed to be used together
-with the quickstart example of the [companion](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart) 
-library. See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for the .cpp implementation of this example:
+with the
+[ataraxis-transport-layer-pc quickstart example](https://github.com/Sun-Lab-NBB/ataraxis-transport-layer-pc#quickstart).
+See the [rx_tx_loop.cpp](./examples/rx_tx_loop.cpp) for the .cpp implementation of this example:
 
 ```
 // Includes the core dependency for all Teensyduino projects.
@@ -209,8 +212,8 @@ bool send_status = tl_class.SendData();
 #### Receiving Data
 There are three key methods associated with receiving data from the PC:
 - The `Available()` method checks if the serial interface has received enough bytes to justify parsing the data.
-- The `ReceiveData()` method reads the encoded packet from the byte-stream stored in Serial interface buffer, verifies 
-  its integrity with the CRC checksum, and decodes the payload from the packet using COBS. If the packet was 
+- The `ReceiveData()` method reads the encoded packet from the byte-stream stored in the Serial interface buffer,
+  verifies its integrity with the CRC checksum, and decodes the payload from the packet using COBS. If the packet was
   successfully received and unpacked, this method returns True.
 - The `ReadData()` method overwrites the memory (data) of the input object with the data extracted from the received 
   payload. To do so, the method reads and consumes the number of bytes necessary to 'fill' the object with data from 
@@ -251,19 +254,20 @@ ___
 
 ## Developers
 
-This section provides installation, dependency, and build-system instructions for project developers.
+This section provides installation, dependency, and build-system instructions for the developers that want to modify
+the source code of this library.
 
 ### Installing the Project
 
-1. Install [Platformio](https://platformio.org/install/integration) either as a standalone IDE or as an IDE plugin.
+1. Install [PlatformIO](https://platformio.org/install/integration) either as a standalone IDE or as an IDE plugin.
 2. Download this repository to the local machine using the preferred method, such as git-cloning.
 3. If the downloaded distribution is stored as a compressed archive, unpack it using the appropriate decompression tool.
 4. `cd` to the root directory of the prepared project distribution.
 5. Run `pio project init` to initialize the project on the local machine. See 
-   [Platformio API documentation](https://docs.platformio.org/en/latest/core/userguide/project/cmd_init.html) for 
+   [PlatformIO API documentation](https://docs.platformio.org/en/latest/core/userguide/project/cmd_init.html) for 
    more details on initializing and configuring projects with platformio.
 6. If using an IDE that does not natively support platformio integration, call the `pio project metadata` command 
-   to generate the metadata to integrate the project with the IDE. Note; most mainstream IDEs do not require or benefit
+   to generate the metadata to integrate the project with the IDE. Note, most mainstream IDEs do not require or benefit
    from this step.
 
 ***Warning!*** To build this library for a platform or architecture that is not explicitly supported, edit the 
@@ -272,10 +276,10 @@ with support for `teensy 4.1`, `arduino due`, and `arduino mega (R3)` platforms.
 
 ### Additional Dependencies
 
-In addition to installing Platformio and main project dependencies, install the following dependencies:
+In addition to installing PlatformIO and main project dependencies, install the following dependencies:
 
 - [Tox](https://tox.wiki/en/4.15.0/user_guide.html) and [Doxygen](https://www.doxygen.nl/manual/install.html) to build 
-  the API documentation for the project. Note; both dependencies have to be available on the local system’s path.
+  the API documentation for the project. Note, both dependencies have to be available on the local system’s path.
 
 ### Development Automation
 
@@ -287,7 +291,22 @@ about the available pipelines and their implementation. Alternatively, call `tox
 the project to see the list of available tasks.
 
 ***Note,*** all pull requests for this project have to successfully complete the `tox`, `pio check`, and `pio test`
-tasks before being submitted.
+tasks before being merged.
+
+### AI-Assisted Development
+
+Claude Code skills and other AI development assets for this project are distributed through the
+[ataraxis](https://github.com/Sun-Lab-NBB/ataraxis) marketplace as part of the **automation** plugin. Install the
+plugin from the marketplace to make all associated skills and development tools available to compatible AI coding
+agents. This repository ships the [CLAUDE.md](CLAUDE.md) instruction file, which maps each development task to the
+skill that governs it and states which protocol changes have to be synchronized with the companion PC library.
+
+### Automation Troubleshooting
+
+The packages used in the `tox` automation pipelines (uv, Doxygen, Sphinx) and `tox` itself may experience runtime
+failures. In most cases, this is related to their caching behavior. If an unintelligible error is encountered while
+running the `docs` or the `deploy` task, deleting the cache and build directories (`.tox`, `docs/source/doxygen`,
+`docs/build`) manually or via a CLI command typically resolves the issue.
 
 ___
 

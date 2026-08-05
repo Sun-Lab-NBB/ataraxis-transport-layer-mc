@@ -67,11 +67,15 @@ static constexpr uint16_t kSerialBufferSize = 256;
     defined(__AVR_ATmega168__) || defined(__AVR_ATmega1280__) || defined(__AVR_ATmega16U4__)
 static constexpr uint16_t kSerialBufferSize = 64;
 
-// The default fallback for unsupported boards is the reasonable minimum buffer size
+// The default fallback for unsupported boards is the reasonable minimum buffer size.
 #else
 static constexpr uint16_t kSerialBufferSize = 64;
 
 #endif
+
+/// Stores the maximum number of bytes a data packet reserves for metadata, which is the four framing bytes and a CRC
+/// checksum postamble of up to four bytes.
+static constexpr uint8_t kMaximumPacketMetadataSize = 8;
 
 /**
  * @brief Exposes methods for sending and receiving serialized data over the USB and UART communication interfaces.
@@ -79,20 +83,23 @@ static constexpr uint16_t kSerialBufferSize = 64;
  * This class instantiates and manages all library assets used to transcode, validate, and bidirectionally transfer
  * serial data over the target communication interface.
  *
- * @tparam PolynomialType The datatype of the polynomial to use for Cyclic Redundancy Check (CRC) checksum computations.
+ * @tparam PolynomialType the datatype of the polynomial to use for Cyclic Redundancy Check (CRC) checksum computations.
  * This parameter indirectly controls the size of the instance's CRC lookup table. Valid types are uint8_t, uint16_t,
  * and uint32_t.
- * @tparam kMaximumTransmittedPayloadSize The maximum size of the payload that is expected to be transmitted during
+ * @tparam kMaximumTransmittedPayloadSize the maximum size of the payload that is expected to be transmitted during
  * runtime. This parameter indirectly controls the size of the instance's transmission buffer. Must be a value between
  * 1 and 254.
- * @tparam kMaximumReceivedPayloadSize The maximum size of the payload that is expected to be received during runtime.
+ * @tparam kMaximumReceivedPayloadSize the maximum size of the payload that is expected to be received during runtime.
  * This parameter indirectly controls the size of the instance's reception buffer. Must be a value between 1 and 254.
  */
 template <
-    typename PolynomialType                      = uint8_t,                          // Defaults to uint8_t polynomials
-    const uint8_t kMaximumTransmittedPayloadSize = min(kSerialBufferSize - 8, 254),  // Intelligently caps at 254 bytes
-    const uint8_t kMaximumReceivedPayloadSize    = min(kSerialBufferSize - 8, 254)   // Intelligently caps at 254 bytes
-    >
+    typename PolynomialType = uint8_t,  // Defaults to uint8_t polynomials.
+    // Intelligently caps at 254 bytes.
+    const uint8_t kMaximumTransmittedPayloadSize =
+        min(kSerialBufferSize - kMaximumPacketMetadataSize, kBufferLayout::kMaximumPayloadSize),
+    // Intelligently caps at 254 bytes.
+    const uint8_t kMaximumReceivedPayloadSize =
+        min(kSerialBufferSize - kMaximumPacketMetadataSize, kBufferLayout::kMaximumPayloadSize)>
 class TransportLayer final
 {
         // Ensures that the class only accepts uint8, 16 or 32 as valid CRC types, as no other type can be used to
@@ -107,16 +114,16 @@ class TransportLayer final
         // Verifies that the template parameters specifying the size of the transmitted and received payloads are
         // within a valid range of values.
         static_assert(
-            kMaximumTransmittedPayloadSize < 255,
-            "TransportLayer's kMaximumTransmittedPayloadSize template parameter must be less than 255."
+            kMaximumTransmittedPayloadSize <= kBufferLayout::kMaximumPayloadSize,
+            "TransportLayer's kMaximumTransmittedPayloadSize template parameter must not exceed 254."
         );
         static_assert(
             kMaximumTransmittedPayloadSize > 0,
             "TransportLayer's kMaximumTransmittedPayloadSize template parameter must be greater than 0."
         );
         static_assert(
-            kMaximumReceivedPayloadSize < 255,
-            "TransportLayer's kMaximumReceivedPayloadSize template parameter must be less than 255."
+            kMaximumReceivedPayloadSize <= kBufferLayout::kMaximumPayloadSize,
+            "TransportLayer's kMaximumReceivedPayloadSize template parameter must not exceed 254."
         );
         static_assert(
             kMaximumReceivedPayloadSize > 0,
@@ -127,19 +134,17 @@ class TransportLayer final
         /**
          * @brief Initializes all runtime assets that facilitate data transmission and reception.
          *
-         * @note The constructor seeds the transmission buffer's first byte with the protocol start byte value.
-         *
          * @note The checksum parameters are expressed in the standard non-reflected, MSB-aligned form used by published
          * CRC parameter catalogues. Reflected variants are selected through the crc_reflected flag, so a catalogue
          * entry is transcribed without any manual bit reversal.
          *
-         * @param communication_port The initialized communication interface instance, such as Serial or USB Serial.
-         * @param crc_polynomial The polynomial to use for the generation of the CRC lookup table. Defaults to 0x07.
-         * @param crc_initial_value The value to which the CRC checksum is initialized before calculation. Defaults to
+         * @param communication_port the initialized communication interface instance, such as Serial or USB Serial.
+         * @param crc_polynomial the polynomial to use for the generation of the CRC lookup table. Defaults to 0x07.
+         * @param crc_initial_value the value to which the CRC checksum is initialized before calculation. Defaults to
          * 0x00.
-         * @param crc_final_xor_value The value with which the CRC checksum is XORed after calculation. Defaults to
+         * @param crc_final_xor_value the value with which the CRC checksum is XORed after calculation. Defaults to
          * 0x00.
-         * @param crc_reflected Determines whether the checksum is computed least significant bit first and written to
+         * @param crc_reflected determines whether the checksum is computed least significant bit first and written to
          * the packet postamble least significant byte first. Defaults to false.
          */
         explicit TransportLayer(
@@ -150,11 +155,15 @@ class TransportLayer final
             const bool crc_reflected                 = false
         ) :
             _port(communication_port),
-            _crc_processor(crc_polynomial, crc_initial_value, crc_final_xor_value, crc_reflected),
+            _crc_processor(
+                crc_polynomial,       // polynomial
+                crc_initial_value,    // initial_value
+                crc_final_xor_value,  // final_xor_value
+                crc_reflected
+            ),
             _transmission_buffer {},
             _reception_buffer {}
         {
-            // Seeds the transmission buffer's first byte with the protocol start byte value.
             _transmission_buffer[kBufferLayout::kStartByteIndex] = kBufferLayout::kStartByte;
         }
 
@@ -183,7 +192,7 @@ class TransportLayer final
         {
             _reception_buffer[kBufferLayout::kPayloadSizeIndex]  = 0;
             _reception_buffer[kBufferLayout::kOverheadByteIndex] = 0;
-            _consumed_payload_bytes                              = 0;  // Also resets the consumed payload bytes counter
+            _consumed_payload_bytes                              = 0;  // Also resets the payload consumption counter.
         }
 
         /**
@@ -192,18 +201,18 @@ class TransportLayer final
          * @warning This method is intended for testing and debugging purposes and should not be used in production
          * runtimes.
          *
-         * @tparam DestinationSize The size of the destination buffer, in bytes.
-         * @param destination The buffer where to copy the contents of the transmission buffer.
+         * @tparam kDestinationSize the size of the destination buffer, in bytes.
+         * @param destination the buffer where to copy the contents of the transmission buffer.
          */
-        template <size_t DestinationSize>
-        void CopyTransmissionData(uint8_t (&destination)[DestinationSize])
+        template <const size_t kDestinationSize>
+        void CopyTransmissionData(uint8_t (&destination)[kDestinationSize])
         {
             static_assert(
-                DestinationSize == kTransmissionBufferSize,
+                kDestinationSize == kTransmissionBufferSize,
                 "Destination buffer size must be equal to the instance's transmission buffer size."
             );
 
-            memcpy(destination, _transmission_buffer, DestinationSize);
+            memcpy(destination, _transmission_buffer, kDestinationSize);
         }
 
         /**
@@ -212,25 +221,25 @@ class TransportLayer final
          * @warning This method is intended for testing and debugging purposes and should not be used in production
          * runtimes.
          *
-         * @tparam DestinationSize The size of the destination buffer, in bytes.
-         * @param destination The buffer where to copy the contents of the reception buffer.
+         * @tparam kDestinationSize the size of the destination buffer, in bytes.
+         * @param destination the buffer where to copy the contents of the reception buffer.
          */
-        template <size_t DestinationSize>
-        void CopyReceptionData(uint8_t (&destination)[DestinationSize])
+        template <const size_t kDestinationSize>
+        void CopyReceptionData(uint8_t (&destination)[kDestinationSize])
         {
             static_assert(
-                DestinationSize == kReceptionBufferSize,
+                kDestinationSize == kReceptionBufferSize,
                 "Destination buffer size must be equal to the instance's reception buffer size."
             );
 
-            memcpy(destination, _reception_buffer, DestinationSize);
+            memcpy(destination, _reception_buffer, kDestinationSize);
         }
 
         /**
          * @brief Copies the payload from the instance's transmission buffer to its reception buffer.
          *
-         * This method only copies the payload. It does not copy the metadata (start byte) or the CRC checksum
-         * postamble.
+         * This method copies the payload region alone, leaving the reception buffer's metadata and checksum postamble
+         * untouched.
          *
          * @warning This method is intended for testing and debugging purposes and should not be used in production
          * runtimes.
@@ -246,8 +255,7 @@ class TransportLayer final
                 return false;
             }
 
-            // Copies the payload from the transmission buffer to the reception buffer. Note that this excludes most
-            // metadata and the CRC checksum postamble.
+            // Transfers the payload region alone, so the reception buffer keeps its own metadata and postamble bytes.
             memcpy(
                 &_reception_buffer[kBufferLayout::kPayloadStartIndex],
                 &_transmission_buffer[kBufferLayout::kPayloadStartIndex],
@@ -396,9 +404,9 @@ class TransportLayer final
          * @brief Serializes and writes the input object's data to the end of the payload stored in the instance's
          * transmission buffer.
          *
-         * @tparam ObjectType The datatype of the object to write to the transmission buffer.
-         * @param object The object to write to the transmission buffer.
-         * @param object_size The size of the object, in bytes.
+         * @tparam ObjectType the datatype of the object to write to the transmission buffer.
+         * @param object the object to write to the transmission buffer.
+         * @param object_size the size of the object, in bytes.
          * @returns true if the object's data was written to the transmission buffer, or false if the buffer's payload
          * region lacks space for the object (the runtime status is set to kWriteObjectBufferError).
          */
@@ -458,9 +466,9 @@ class TransportLayer final
          * method consumes the read bytes, making it impossible to retrieve the same data from the reception buffer
          * again.
          *
-         * @tparam ObjectType The datatype of the object to read from the reception buffer.
-         * @param object The object to read from the reception buffer.
-         * @param object_size The size of the object, in bytes.
+         * @tparam ObjectType the datatype of the object to read from the reception buffer.
+         * @param object the object to read from the reception buffer.
+         * @param object_size the size of the object, in bytes.
          * @returns true if the object's data was read from the reception buffer, or false if fewer than object_size
          * unread payload bytes remain (the runtime status is set to kReadObjectBufferError).
          */
@@ -510,7 +518,7 @@ class TransportLayer final
     private:
         /// The maximum number of microseconds (us) to wait between receiving any two consecutive bytes of the packet
         /// before declaring the packet stale. This prevents the runtime from getting stuck in the reception cycle.
-        static constexpr uint32_t kTimeout = 10000;  // 10 ms
+        static constexpr uint32_t kTimeout = 10000;  // 10 ms.
 
         /// Stores the size of the CRC checksum postamble, in bytes.
         static constexpr uint8_t kPostambleSize = sizeof(PolynomialType);  // NOLINT(*-dynamic-static-initializers)
@@ -534,7 +542,7 @@ class TransportLayer final
         static_assert(
             kTransmissionBufferSize <= kSerialBufferSize,
             "TransportLayer's transmission buffer size exceeds the serial buffer size for this type of "
-            "microcontroller boards. If you manually increased the serial buffer size, edit the preprocessor "
+            "microcontroller board. If you manually increased the serial buffer size, edit the preprocessor "
             "directives at the top of the transport_layer.h file. Otherwise, set the "
             "kMaximumTransmittedPayloadSize template argument of the TransportLayer class to the value appropriate "
             "for your microcontroller board. Note, in addition to the payload, the buffer may need up to 8 extra "
@@ -544,8 +552,8 @@ class TransportLayer final
         // Ensures that the requested reception buffer does not exceed the microcontroller's serial buffer size.
         static_assert(
             kReceptionBufferSize <= kSerialBufferSize,
-            "TransportLayer's reception buffer size exceeds the serial buffer size for this type for "
-            "microcontroller boards. If you manually increased the serial buffer size, edit the preprocessor "
+            "TransportLayer's reception buffer size exceeds the serial buffer size for this type of "
+            "microcontroller board. If you manually increased the serial buffer size, edit the preprocessor "
             "directives at the top of the transport_layer.h file. Otherwise, set the "
             "kMaximumReceivedPayloadSize template argument of the TransportLayer class to the value appropriate "
             "for your microcontroller board. Note, in addition to the payload, the buffer may need up to 8 extra "
@@ -577,11 +585,11 @@ class TransportLayer final
          */
         uint16_t ConstructPacket()
         {
-            // Encodes the payload into a transmittable packet in-place using the COBS algorithm.
             COBSProcessor::EncodePayload(_transmission_buffer);
 
             // Calculates the CRC checksum for the encoded packet and writes it to the postamble region.
-            const uint16_t combined_size = _crc_processor.template CalculateChecksum<false>(_transmission_buffer);
+            const uint16_t combined_size =
+                _crc_processor.template CalculateChecksum<false>(_transmission_buffer);  // kCheck
 
             return combined_size;
         }
@@ -650,8 +658,8 @@ class TransportLayer final
             const uint16_t packet_size =
                 _reception_buffer[kBufferLayout::kPayloadSizeIndex] + kBufferLayout::kOverheadByteIndex + 2;
 
-            // Parses the incoming packet until the timeout (packet reception stales), an unencoded
-            // delimiter byte value is encountered, or the payload is fully received.
+            // Parses the incoming packet until the timeout (packet reception stalls), an unencoded delimiter byte
+            // value is encountered, or the payload is fully received.
             bool delimiter_found = false;
             timeout_timer        = 0;
             while (timeout_timer < kTimeout && bytes_read < packet_size)
@@ -671,21 +679,21 @@ class TransportLayer final
                 }
             }
 
-            // Packet reception stalled (timed out)
+            // Packet reception stalled (timed out).
             if (timeout_timer >= kTimeout && bytes_read < packet_size)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPacketTimeoutError);
                 return false;
             }
 
-            // Delimiter byte was not found (the packet is corrupted)
+            // Delimiter byte was not found (the packet is corrupted).
             if (!delimiter_found)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kDelimiterNotFoundError);
                 return false;
             }
 
-            // Delimiter byte was found too early (the packet is corrupted)
+            // Delimiter byte was found too early (the packet is corrupted).
             if (bytes_read != packet_size)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kDelimiterFoundTooEarlyError);
@@ -705,7 +713,7 @@ class TransportLayer final
                 }
             }
 
-            // Packet reception stalled (timed out)
+            // Packet reception stalled (timed out).
             if (timeout_timer >= kTimeout && bytes_read < postamble_size)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPostambleTimeoutError);
@@ -724,13 +732,12 @@ class TransportLayer final
         bool ValidatePacket()
         {
             // Verifies the received data's integrity using its CRC checksum.
-            if (_crc_processor.template CalculateChecksum<true>(_reception_buffer) == 0)
+            if (_crc_processor.template CalculateChecksum<true>(_reception_buffer) == 0)  // kCheck
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed);
                 return false;
             }
 
-            // Decodes the payload from the packet using the COBS algorithm.
             if (COBSProcessor::DecodePayload(_reception_buffer) == 0)
             {
                 _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kDecodingFailed);
@@ -741,4 +748,4 @@ class TransportLayer final
         }
 };
 
-#endif  //AXTLMC_TRANSPORT_LAYER_H
+#endif  // AXTLMC_TRANSPORT_LAYER_H

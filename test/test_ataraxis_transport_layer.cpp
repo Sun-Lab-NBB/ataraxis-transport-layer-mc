@@ -296,6 +296,33 @@ void test_crc_processor_calculate_checksum()
     TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
 }
 
+/// Verifies CRCProcessor CalculateChecksum() for a polynomial configured with a non-zero final XOR value.
+void test_crc_processor_nonzero_final_xor()
+{
+    // Generates the test buffer of size 10 with an example packet of size 6 and two placeholder values for the CRC
+    // checksum, matching the layout used by the checksum test above.
+    uint8_t test_packet[10] = {0x00, 0x04, 0x01, 0x02, 0x03, 0x04, 0x05, 0x15, 0x00, 0x00};
+
+    // Instantiates the class object to be tested using CRC-16/USB, a standard variant with a non-zero final XOR value.
+    CRCProcessor<uint16_t> crc_processor(0x8005, 0xFFFF, 0xFFFF);
+
+    // Runs the checksum generation function on the test packet
+    const uint16_t result = crc_processor.CalculateChecksum<false>(test_packet);
+    TEST_ASSERT_EQUAL_UINT16(10, result);
+
+    // Verifies that the intact packet passes the integrity check
+    TEST_ASSERT_EQUAL_UINT16(1, crc_processor.CalculateChecksum<true>(test_packet));
+
+    // Invalidates the checksum postamble and verifies that the checker reports data corruption
+    test_packet[9] ^= 0x01;
+    TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
+
+    // Restores the checksum, corrupts the packet payload instead, and verifies that this is also detected
+    test_packet[9] ^= 0x01;
+    test_packet[4] ^= 0x01;
+    TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
+}
+
 /// Verifies that StreamMock class methods function correctly.
 void test_stream_mock()
 {
@@ -1128,6 +1155,7 @@ int RunUnityTests()
 #endif
 
     RUN_TEST(test_crc_processor_calculate_checksum);
+    RUN_TEST(test_crc_processor_nonzero_final_xor);
 
     // Stream Mock
     RUN_TEST(test_stream_mock);

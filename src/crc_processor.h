@@ -63,6 +63,7 @@ class CRCProcessor final
             _initial_value(initial_value), _final_xor_value(final_xor_value)
         {
             GenerateCRCTable(polynomial);
+            _expected_residue = ComputeExpectedResidue();
         }
 
         /**
@@ -135,9 +136,9 @@ class CRCProcessor final
                 return end_index + kCRCByteLength;
             }
 
-            // Returns 1 if the CRC calculation on the packet and its checksum postamble yields 0, indicating the data
-            // is intact. Returns 0 otherwise, indicating data corruption.
-            if (crc_checksum == 0) return 1;
+            // Returns 1 if the CRC calculation on the packet and its checksum postamble matches the expected residue,
+            // indicating the data is intact. Returns 0 otherwise, indicating data corruption.
+            if (crc_checksum == _expected_residue) return 1;
 
             return 0;
         }
@@ -161,6 +162,9 @@ class CRCProcessor final
 
         /// Stores the lookup table used to speed up CRC computation at runtime.
         PolynomialType _crc_table[256];
+
+        /// Stores the checksum value that verifying an intact packet produces.
+        PolynomialType _expected_residue = 0;
 
         /**
          * @brief Computes the CRC lookup table for the given polynomial and saves it to the _crc_table member.
@@ -210,6 +214,32 @@ class CRCProcessor final
                 // Stores the calculated CRC remainder for the byte value into the lookup table.
                 _crc_table[byte] = crc;
             }
+        }
+
+        /**
+         * @brief Computes the checksum value that verifying an intact packet produces.
+         *
+         * Verification runs the checksum calculation over the packet together with its checksum postamble. The value
+         * this produces for an intact packet is determined by the polynomial and the final XOR value alone, so it is
+         * resolved once at initialization and reused for every verification.
+         *
+         * @returns the checksum value that indicates an intact packet.
+         */
+        PolynomialType ComputeExpectedResidue() const
+        {
+            PolynomialType residue = 0;
+
+            // Feeds the final XOR value through a zeroed checksum register, mirroring the way verification consumes
+            // the checksum postamble appended to the packet.
+            for (uint8_t i = 0; i < kCRCByteLength; ++i)
+            {
+                const auto postamble_byte =
+                    static_cast<uint8_t>(_final_xor_value >> 8 * (kCRCByteLength - i - 1) & 0xFF);
+                const auto table_index = static_cast<uint8_t>(residue >> 8 * (kCRCByteLength - 1) ^ postamble_byte);
+                residue                = static_cast<PolynomialType>(residue << 8 ^ _crc_table[table_index]);
+            }
+
+            return static_cast<PolynomialType>(residue ^ _final_xor_value);
         }
 };
 

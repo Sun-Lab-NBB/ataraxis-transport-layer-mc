@@ -17,12 +17,19 @@
 
 using namespace axtlmc_shared_assets;
 
-// Restricts the 16- and 32-bit CRC tests to the Arduino Due and Teensy boards, which have ample memory for the wider
-// lookup tables. The CRC implementation is architecture-agnostic, so the 8-bit tests that run on every board already
-// establish that the implementation behaves correctly on the narrower architectures.
+// Restricts the 32-bit CRC tests to the Arduino Due and Teensy boards. Each 32-bit instance builds a 1024-byte lookup
+// table, and the table generation tests hold a reference table of the same size beside it, which is more memory than
+// the AVR boards can comfortably spare.
 #if defined(ARDUINO_ARCH_SAM) || defined(CORE_TEENSY)
 #define RUN_WIDE_CRC_TESTS
 #endif
+
+// Runs the 16-bit CRC tests on every supported board. A 16-bit instance builds a 512-byte lookup table, and the table
+// generation tests hold a 512-byte reference beside it, which fits the 8192 bytes of SRAM the smallest supported board
+// (ATmega2560) provides. AVR is also the only supported architecture whose 'int' is 16 bits wide, which makes it the
+// likeliest place for a width-dependent defect in the table generation or the checksum register to surface, so it is
+// the one board these tests must not skip.
+#define RUN_CRC16_TESTS
 
 /// Called automatically before each test function. Currently unused.
 void setUp()
@@ -131,16 +138,31 @@ void test_cobs_processor_errors()
     const uint16_t encoded_size = COBSProcessor::EncodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(17, encoded_size);
 
+    // Mirrors the buffer state each aborted decoding cycle below is expected to leave behind. Comparing against a
+    // snapshot is what demonstrates that the decoder stops writing where it stops reading, which the returned error
+    // code on its own cannot show.
+    uint8_t expected_buffer[sizeof(payload_buffer)];
+
     // Decodes the packet of size 13 (17-4), which is a valid size. The process should abort before the delimiter at
     // index 16 is reached with the appropriate error code. Tests both the error code and that the decoder that uses a
     // while loop exits the loop as expected instead of overwriting the 'out-of-limits' buffer memory.
     payload_buffer[1] = 13;
-    result            = COBSProcessor::DecodePayload(payload_buffer);
-    TEST_ASSERT_EQUAL_UINT16(0, result);
 
-    // Overwrites encoded jump variable at index 10 with the actual delimiter value. This should trigger the decoder
-    // loop to break early, and issue an error code, as it encountered the delimiter before it expected it based on the
-    // input packet size
+    // Captures the pre-decode state and applies the three writes the aborted cycle is entitled to make. The decoder
+    // walks the encoded chain from the overhead byte to index 5 and then to index 10, and the jump taken from index 10
+    // lands past the truncated packet's delimiter index (16), which ends the cycle. Every remaining byte, and the
+    // whole region past index 16 in particular, has to survive the aborted cycle untouched.
+    memcpy(expected_buffer, payload_buffer, sizeof(payload_buffer));
+    expected_buffer[2]  = 0;  // The decoder zeroes the overhead byte before it walks the encoded chain
+    expected_buffer[5]  = 0;  // The decoder restores the encoded delimiter it walks through at index 5
+    expected_buffer[10] = 0;  // The decoder restores the encoded delimiter it walks through at index 10
+
+    result = COBSProcessor::DecodePayload(payload_buffer);
+    TEST_ASSERT_EQUAL_UINT16(0, result);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_buffer, payload_buffer, sizeof(expected_buffer));
+
+    // Restores the delimiter value at index 10, which the aborted cycle above already decoded back to 0. Keeping the
+    // assignment makes the state the next decoding cycle runs on explicit rather than inherited.
     payload_buffer[10] = 0;
 
     // Resets the overhead back to the correct value, since the decoder overwrites it to 0 on each call, even if the
@@ -148,9 +170,16 @@ void test_cobs_processor_errors()
     payload_buffer[2] = 3;
     payload_buffer[1] = 15;  // Also restores the payload_size to the proper size
 
+    // Captures the pre-decode state again. The overhead byte sends the decoder straight to index 5, which now holds a
+    // decoded delimiter instead of a distance, so zeroing the overhead byte is the only write the cycle performs
+    // before it reports the premature delimiter.
+    memcpy(expected_buffer, payload_buffer, sizeof(payload_buffer));
+    expected_buffer[2] = 0;
+
     // Tests delimiter found too early error code
     result = COBSProcessor::DecodePayload(payload_buffer);
     TEST_ASSERT_EQUAL_UINT16(0, result);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_buffer, payload_buffer, sizeof(expected_buffer));
 }
 
 /// Verifies CRCProcessor GenerateCRCTable() for 8-bit polynomials against the table from https://crccalc.com/.
@@ -1444,6 +1473,1637 @@ void test_transport_layer_partial_send_error()
     TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_transmission_buffer());
 }
 
+
+/// Stores the maximum packet size, in bytes, that a StallingStream instance is able to hold.
+static constexpr uint16_t kStallingStreamCapacity = 64;
+
+/**
+ * @brief Releases the bytes of a preloaded packet one at a time, withholding each byte for a fixed interval before
+ * reporting it as available for reading.
+ *
+ * StreamMock derives its available() count from static buffer contents, so any stall it produces lasts until the test
+ * ends. This double instead ends every stall on its own, which is the pattern a real communication interface produces
+ * when it delivers a packet in bursts and is the only way to reach the reception loops' resumption path.
+ *
+ * @note The instance implements the read() and available() methods that the TransportLayer class uses to receive
+ * packets. The remaining Stream methods are implemented to satisfy the interface and are not exercised by the
+ * reception path.
+ */
+class StallingStream final : public Stream
+{
+    public:
+        /**
+         * @brief Initializes the instance with the packet to release and the schedule to release it on.
+         *
+         * @param packet the packet bytes to copy into the instance and release to the reader.
+         * @param packet_size the number of bytes the packet occupies, capped at kStallingStreamCapacity.
+         * @param immediate_bytes the number of leading packet bytes the instance reports as available at once.
+         * @param stall_microseconds the interval each remaining byte is withheld for before it is released.
+         */
+        StallingStream(
+            const uint8_t* packet,
+            const uint16_t packet_size,
+            const uint16_t immediate_bytes,
+            const uint32_t stall_microseconds
+        ) :
+            _packet {},
+            _packet_size(packet_size < kStallingStreamCapacity ? packet_size : kStallingStreamCapacity),
+            _released(immediate_bytes < _packet_size ? immediate_bytes : _packet_size),
+            _stall_microseconds(stall_microseconds),
+            _last_release_time(micros())
+        {
+            memcpy(_packet, packet, _packet_size);
+        }
+
+        /**
+         * @brief Returns the number of released bytes that the reader has not yet consumed.
+         *
+         * Releases one additional byte whenever the configured interval has elapsed since the previous release, which
+         * spaces the withheld bytes evenly without ever leaving the reader waiting indefinitely.
+         *
+         * @returns the number of bytes available for reading.
+         */
+        int available() override
+        {
+            const uint32_t current_time = micros();
+
+            // Advances the release schedule by a single byte per elapsed interval, which is what separates two
+            // consecutive bytes by the configured stall rather than delivering the remainder of the packet at once.
+            if (_released < _packet_size && current_time - _last_release_time >= _stall_microseconds)
+            {
+                _released++;
+                _last_release_time = current_time;
+            }
+
+            return static_cast<int>(_released - _index);
+        }
+
+        /**
+         * @brief Consumes and returns the next released byte.
+         *
+         * @returns the consumed byte, or -1 if the reader has already consumed every released byte.
+         */
+        int read() override
+        {
+            if (_index >= _released) return -1;
+
+            return _packet[_index++];
+        }
+
+        /**
+         * @brief Returns the next released byte without consuming it.
+         *
+         * @returns the peeked byte, or -1 if the reader has already consumed every released byte.
+         */
+        int peek() override
+        {
+            if (_index >= _released) return -1;
+
+            return _packet[_index];
+        }
+
+        /**
+         * @brief Discards the input byte, as the instance only drives the reception path.
+         *
+         * @returns 1, reporting that the byte was accepted.
+         */
+        size_t write(const uint8_t) override
+        {
+            return 1;
+        }
+
+        /**
+         * @brief Discards the input buffer, as the instance only drives the reception path.
+         *
+         * @param bytes_to_write the number of bytes the caller offered.
+         * @returns the number of bytes the caller offered, reporting that all of them were accepted.
+         */
+        size_t write(const uint8_t*, const size_t bytes_to_write) override
+        {
+            return bytes_to_write;
+        }
+
+        /// Intentionally empty, as the instance stores no outgoing data to flush.
+        void flush() override
+        {}
+
+        /// Defaults the destructor. Uses the 'virtual' form rather than 'override', because the Arduino Print base
+        /// class declares no virtual destructor on any supported architecture, so 'override' fails to compile.
+        virtual ~StallingStream() = default;
+
+    private:
+        /// Stores the packet bytes the instance releases to the reader.
+        uint8_t _packet[kStallingStreamCapacity];
+
+        /// Stores the number of bytes the released packet occupies.
+        const uint16_t _packet_size;
+
+        /// Tracks the number of packet bytes the instance has released for reading.
+        uint16_t _released;
+
+        /// Tracks the number of released bytes the reader has consumed.
+        uint16_t _index = 0;
+
+        /// Stores the interval, in microseconds, each withheld byte is held back for before it is released.
+        const uint32_t _stall_microseconds;
+
+        /// Stores the timestamp, in microseconds, of the most recent byte release.
+        uint32_t _last_release_time;
+};
+
+/// Pins the numeric value and the storage width of every kTransportStatusCodes member.
+void test_shared_assets_status_code_values()
+{
+    // The PC-side companion library decodes a reported transport status from the numeric value the microcontroller
+    // places on the wire, so these numbers are part of the protocol contract rather than an internal detail. Every
+    // other status assertion in this suite compares an accessor against the enum member itself, which follows any
+    // renumbering silently, so each value is pinned against an explicit literal here.
+
+    // The status travels as a single byte, so widening the underlying type would desynchronize the two libraries
+    TEST_ASSERT_EQUAL_size_t(1, sizeof(kTransportStatusCodes));
+
+    // Buffer and packet lifecycle codes
+    TEST_ASSERT_EQUAL_UINT8(11, static_cast<uint8_t>(kTransportStatusCodes::kStandby));
+    TEST_ASSERT_EQUAL_UINT8(12, static_cast<uint8_t>(kTransportStatusCodes::kDecodingFailed));
+    TEST_ASSERT_EQUAL_UINT8(13, static_cast<uint8_t>(kTransportStatusCodes::kPacketSent));
+    TEST_ASSERT_EQUAL_UINT8(14, static_cast<uint8_t>(kTransportStatusCodes::kPayloadSizeByteNotFound));
+    TEST_ASSERT_EQUAL_UINT8(15, static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize));
+    TEST_ASSERT_EQUAL_UINT8(16, static_cast<uint8_t>(kTransportStatusCodes::kPacketTimeoutError));
+    TEST_ASSERT_EQUAL_UINT8(17, static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse));
+    TEST_ASSERT_EQUAL_UINT8(18, static_cast<uint8_t>(kTransportStatusCodes::kPacketParsed));
+    TEST_ASSERT_EQUAL_UINT8(19, static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed));
+    TEST_ASSERT_EQUAL_UINT8(20, static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived));
+
+    // Object serialization codes
+    TEST_ASSERT_EQUAL_UINT8(21, static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError));
+    TEST_ASSERT_EQUAL_UINT8(22, static_cast<uint8_t>(kTransportStatusCodes::kObjectWrittenToBuffer));
+    TEST_ASSERT_EQUAL_UINT8(23, static_cast<uint8_t>(kTransportStatusCodes::kReadObjectBufferError));
+    TEST_ASSERT_EQUAL_UINT8(24, static_cast<uint8_t>(kTransportStatusCodes::kObjectReadFromBuffer));
+
+    // Packet framing and transmission codes
+    TEST_ASSERT_EQUAL_UINT8(25, static_cast<uint8_t>(kTransportStatusCodes::kDelimiterNotFoundError));
+    TEST_ASSERT_EQUAL_UINT8(26, static_cast<uint8_t>(kTransportStatusCodes::kDelimiterFoundTooEarlyError));
+    TEST_ASSERT_EQUAL_UINT8(27, static_cast<uint8_t>(kTransportStatusCodes::kPostambleTimeoutError));
+    TEST_ASSERT_EQUAL_UINT8(28, static_cast<uint8_t>(kTransportStatusCodes::kEmptyPayloadError));
+    TEST_ASSERT_EQUAL_UINT8(29, static_cast<uint8_t>(kTransportStatusCodes::kPacketPartiallySent));
+}
+
+/// Pins every kBufferLayout constant to the absolute value the packet format requires.
+void test_shared_assets_buffer_layout_constants()
+{
+    // These constants define the packet the PC-side companion library builds and parses, and that library hardcodes
+    // the same numbers rather than importing them. Every other use in this suite and in the library sources places a
+    // kBufferLayout constant on both sides of the comparison, which pins the relationship between the constants but
+    // follows any change to their absolute values, so each value is pinned against an explicit literal here.
+
+    // Payload size bounds. The lower bound forbids empty payloads and the upper bound is the COBS hard limit, beyond
+    // which the overhead byte can no longer index the final delimiter.
+    TEST_ASSERT_EQUAL_UINT8(1, static_cast<uint8_t>(kBufferLayout::kMinimumPayloadSize));
+    TEST_ASSERT_EQUAL_UINT8(254, static_cast<uint8_t>(kBufferLayout::kMaximumPayloadSize));
+
+    // COBS-encoded packet size bounds, which are the payload bounds plus the overhead and delimiter bytes. The upper
+    // bound exceeds the byte range, which is why the constant is declared wider than its siblings.
+    TEST_ASSERT_EQUAL_UINT8(3, static_cast<uint8_t>(kBufferLayout::kMinimumPacketSize));
+    TEST_ASSERT_EQUAL_UINT16(256, static_cast<uint16_t>(kBufferLayout::kMaximumPacketSize));
+
+    // Reserved byte values. Both sides of the connection have to agree on these exactly, as the receiver frames every
+    // packet by scanning for the start byte and terminates the payload at the delimiter.
+    TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(kBufferLayout::kDelimiterByte));
+    TEST_ASSERT_EQUAL_UINT8(129, static_cast<uint8_t>(kBufferLayout::kStartByte));
+
+    // Buffer layout indices, which fix the field order inside every transmitted and received packet
+    TEST_ASSERT_EQUAL_UINT8(0, static_cast<uint8_t>(kBufferLayout::kStartByteIndex));
+    TEST_ASSERT_EQUAL_UINT8(1, static_cast<uint8_t>(kBufferLayout::kPayloadSizeIndex));
+    TEST_ASSERT_EQUAL_UINT8(2, static_cast<uint8_t>(kBufferLayout::kOverheadByteIndex));
+    TEST_ASSERT_EQUAL_UINT8(3, static_cast<uint8_t>(kBufferLayout::kPayloadStartIndex));
+}
+
+/// Verifies COBSProcessor EncodePayload() overhead-byte arithmetic at the largest distance the scheme supports.
+void test_cobs_processor_maximum_overhead_distance()
+{
+    // Sizes the buffer to hold the largest packet the protocol supports plus the two preamble bytes, which places the
+    // delimiter byte appended past the payload at the very last index of the buffer.
+    uint8_t payload_buffer[kBufferLayout::kMaximumPacketSize + 2];
+
+    // Fills the buffer with a non-delimiter value. A maximum-size payload that holds no delimiter bytes at all is the
+    // only layout that leaves the encoder's tracker at the appended delimiter byte, which is what makes the overhead
+    // byte store the largest distance the class static_assert permits. The boundary-size checks in the error test
+    // cannot reach this state, as they encode into a buffer that still holds a delimiter byte at index 4 left over
+    // from an earlier decoding cycle, which caps their overhead byte at 2.
+    constexpr uint8_t kFillerValue = 22;
+    memset(payload_buffer, kFillerValue, sizeof(payload_buffer));
+
+    payload_buffer[kBufferLayout::kPayloadSizeIndex]  = kBufferLayout::kMaximumPayloadSize;
+    payload_buffer[kBufferLayout::kOverheadByteIndex] = 0;  // Zeroes the placeholder the encoder overwrites
+
+    const uint16_t encoded_size = COBSProcessor::EncodePayload(payload_buffer);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kBufferLayout::kMaximumPacketSize), encoded_size);
+
+    // Verifies that the overhead byte stores the maximum payload size plus one, the upper bound the class
+    // static_assert declares. The returned packet size is computed from the payload size alone and therefore does not
+    // depend on the distance arithmetic, making this the only assertion that pins that arithmetic at its upper bound.
+    TEST_ASSERT_EQUAL_UINT8(255, payload_buffer[kBufferLayout::kOverheadByteIndex]);
+
+    // Verifies that the delimiter byte was appended immediately past the payload rather than inside or beyond it
+    constexpr uint16_t kDelimiterIndex = kBufferLayout::kMaximumPayloadSize + kBufferLayout::kPayloadStartIndex;
+    TEST_ASSERT_EQUAL_UINT8(kBufferLayout::kDelimiterByte, payload_buffer[kDelimiterIndex]);
+
+    // Verifies that the encoder left the payload untouched, as a payload holding no delimiter bytes gives the encoder
+    // nothing to overwrite
+    for (uint16_t i = kBufferLayout::kPayloadStartIndex; i < kDelimiterIndex; i++)
+    {
+        // Uses a custom message system similar to Unity Array check to provide the failed index number
+        char message[50];  // Buffer for the failure message
+        snprintf(message, sizeof(message), "Check failed at index: %d", i);
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(kFillerValue, payload_buffer[i], message);
+    }
+
+    // Verifies that the decoder follows the maximum distance back to the appended delimiter byte, which confirms the
+    // encoded overhead value is usable rather than merely numerically correct
+    const uint16_t decoded_size = COBSProcessor::DecodePayload(payload_buffer);
+    TEST_ASSERT_EQUAL_UINT16(static_cast<uint16_t>(kBufferLayout::kMaximumPayloadSize), decoded_size);
+    TEST_ASSERT_EQUAL_UINT8(0, payload_buffer[kBufferLayout::kOverheadByteIndex]);
+}
+
+/// Verifies COBSProcessor EncodePayload() overhead-byte arithmetic when a delimiter sits at the first payload byte.
+void test_cobs_processor_delimiter_at_first_payload_byte()
+{
+    // Prepares test assets
+    uint8_t payload_buffer[16];
+    memset(payload_buffer, 22, sizeof(payload_buffer));
+
+    // Creates a test payload using the format: start [0], payload_size [1], overhead [2], payload [3 to 7] (5 total),
+    // delimiter [8]. The delimiter placed at index 3 sits at the first payload byte, which is the lower bound of the
+    // encoder loop and the shortest distance the overhead byte can hold.
+    const uint8_t initial_packet[9] = {129, 5, 0, 0, 4, 5, 6, 7, 22};
+    memcpy(payload_buffer, initial_packet, sizeof(initial_packet));
+
+    // Expected packet after encoding. The overhead byte holds 1, the distance from index 2 to index 3, and the encoded
+    // delimiter holds 5, the distance from index 3 to the delimiter appended at index 8.
+    const uint8_t encoded_packet[9] = {129, 5, 1, 5, 4, 5, 6, 7, 0};
+
+    // Expected state of the packet after decoding. The payload is reverted to the original state, the overhead is
+    // reset to 0, and the delimiter byte is unchanged.
+    const uint8_t decoded_packet[9] = {129, 5, 0, 0, 4, 5, 6, 7, 0};
+
+    // Encodes test payload
+    const uint16_t encoded_size = COBSProcessor::EncodePayload(payload_buffer);
+
+    // Verifies that encoding returned expected payload size (5) + overhead + delimiter (== 7, packet size)
+    TEST_ASSERT_EQUAL_UINT16(7, encoded_size);
+
+    // Verifies the overhead byte on its own, since it is the value that regresses if the encoder loop stops before
+    // reaching its lower-bound index and therefore never encodes the delimiter staged at that index
+    TEST_ASSERT_EQUAL_UINT8(1, payload_buffer[kBufferLayout::kOverheadByteIndex]);
+
+    // Verifies that the encoded payload matches the expected encoding outcome
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(encoded_packet, payload_buffer, sizeof(encoded_packet));
+
+    // Decodes test payload. A successful round trip confirms that the distance stored at the first payload byte
+    // actually chains to the appended delimiter, rather than merely holding a plausible-looking value.
+    const uint16_t decoded_size = COBSProcessor::DecodePayload(payload_buffer);
+    TEST_ASSERT_EQUAL_UINT16(5, decoded_size);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(decoded_packet, payload_buffer, sizeof(decoded_packet));
+
+    // Verifies that the non-packet-related portion of the buffer was not affected by the encoding/decoding cycles
+    for (uint16_t i = sizeof(encoded_packet); i < static_cast<uint16_t>(sizeof(payload_buffer)); i++)
+    {
+        // Uses a custom message system similar to Unity Array check to provide the failed index number
+        char message[50];  // Buffer for the failure message
+        snprintf(message, sizeof(message), "Check failed at index: %d", i);
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(22, payload_buffer[i], message);
+    }
+}
+
+/// Verifies that CRCProcessor bit-reverses the initial value of a reflected instance, using an initial value that is
+/// not its own bit-reversal.
+void test_crc_processor_reflected_initial_value_is_bit_reversed()
+{
+    // Every reflected configuration exercised elsewhere in this suite passes an initial value that is its own
+    // bit-reversal (0x00, 0xFFFF, 0xFFFFFFFF), which leaves the reflection of the initial value unobservable. A zero
+    // final XOR value also makes the expected residue zero, so generating and then verifying a packet succeeds no
+    // matter which form of the initial value seeds the register. Only an absolute check value distinguishes the two.
+
+    // Reflecting the 0x01 initial value seeds the checksum register with 0x80, which drives the reflected 0x31 table
+    // to 0x0C over the nine characters the helper covers. Consuming the initial value verbatim would yield 0x05.
+    constexpr uint8_t expected_postamble[1] = {0x0C};
+
+    VerifyCatalogueCheckValue<uint8_t>(
+        0x31,  // polynomial
+        0x01,  // initial_value
+        0x00,  // final_xor_value
+        true,  // reflected
+        expected_postamble
+    );
+
+    // Pins the mirror image of the configuration above, where the initial value is the bit-reversal of 0x01 and
+    // therefore seeds the register with 0x01. An instance that skips the reflection swaps the two check values, so
+    // pinning both directions leaves it no expectation it can satisfy.
+    constexpr uint8_t mirrored_postamble[1] = {0x05};
+
+    VerifyCatalogueCheckValue<uint8_t>(
+        0x31,  // polynomial
+        0x80,  // initial_value
+        0x00,  // final_xor_value
+        true,  // reflected
+        mirrored_postamble
+    );
+}
+
+/// Verifies that CRCProcessor applies the final XOR value of a reflected instance without bit-reversing it, using a
+/// final XOR value that is not its own bit-reversal.
+void test_crc_processor_reflected_final_xor_is_not_reflected()
+{
+    // The final XOR value is applied to the register after reflected processing has already placed it in reflected
+    // form, so it enters the checksum exactly as the catalogue states it, unlike the initial value. Since the expected
+    // residue is derived from the same stored final XOR value, a bit-reversed final XOR value stays self-consistent
+    // across generation and verification, and only an absolute check value exposes it.
+
+    // The reflected 0x31 configuration with a zero final XOR value produces 0xA1, which
+    // test_crc_processor_checksum_crc8_reflected pins. Applying the final XOR value verbatim gives 0xA1 ^ 0x0F, while
+    // bit-reversing it to 0xF0 would give 0xA1 ^ 0xF0 == 0x51.
+    constexpr uint8_t expected_postamble[1] = {0xAE};
+
+    VerifyCatalogueCheckValue<uint8_t>(
+        0x31,  // polynomial
+        0x00,  // initial_value
+        0x0F,  // final_xor_value
+        true,  // reflected
+        expected_postamble
+    );
+
+    // Pins the mirror image of the configuration above, whose final XOR value is the bit-reversal of 0x0F. The two
+    // check values are each other's outcome under a bit-reversing final XOR value, so neither can be met by accident.
+    constexpr uint8_t mirrored_postamble[1] = {0x51};
+
+    VerifyCatalogueCheckValue<uint8_t>(
+        0x31,  // polynomial
+        0x00,  // initial_value
+        0xF0,  // final_xor_value
+        true,  // reflected
+        mirrored_postamble
+    );
+}
+
+/// Verifies CRCProcessor CalculateChecksum() for the non-reflected CRC-8/I-432-1 configuration, which applies a
+/// non-zero final XOR value at the 8-bit width.
+void test_crc_processor_checksum_crc8_nonzero_final_xor()
+{
+    // Every other non-reflected 8-bit instance in this suite passes a zero final XOR value, which collapses the
+    // expected residue to zero and leaves the non-reflected residue computation unexercised at this width.
+    // CRC-8/I-432-1 shares the polynomial and the initial value of the CRC-8/SMBUS configuration and differs only in
+    // its 0x55 final XOR value, so its check value is the SMBUS check value XORed with that final XOR value:
+    // 0xF4 ^ 0x55 == 0xA1. Verifying the generated packet drives the register to the non-zero residue 0xF9, which is
+    // reached only if the residue is derived from the final XOR value rather than assumed to be zero.
+    constexpr uint8_t expected_postamble[1] = {0xA1};
+
+    VerifyCatalogueCheckValue<uint8_t>(
+        0x07,   // polynomial
+        0x00,   // initial_value
+        0x55,   // final_xor_value
+        false,  // reflected
+        expected_postamble
+    );
+}
+
+/// Verifies CRCProcessor CalculateChecksum() for the non-reflected CRC-8/MIFARE-MAD configuration, which applies a
+/// non-zero initial value at the 8-bit width.
+void test_crc_processor_checksum_crc8_nonzero_initial_value()
+{
+    // Every other non-reflected 8-bit instance in this suite seeds the checksum register with 0x00, which makes a
+    // register that ignores the initial value indistinguishable from one that honors it. CRC-8/MIFARE-MAD seeds the
+    // register with 0xC7 and produces the check value 0x99, whereas a zeroed register produces 0x37, the check value
+    // of the otherwise identical CRC-8/GSM-A configuration. Verification cannot expose this on its own, as the same
+    // register seeds both the generation and the verification pass, so the check value is pinned instead.
+    constexpr uint8_t expected_postamble[1] = {0x99};
+
+    VerifyCatalogueCheckValue<uint8_t>(
+        0x1D,   // polynomial
+        0xC7,   // initial_value
+        0x00,   // final_xor_value
+        false,  // reflected
+        expected_postamble
+    );
+}
+
+/// Verifies CRCProcessor CalculateChecksum() for a packet that carries the largest payload the buffer layout permits.
+void test_crc_processor_maximum_payload_size()
+{
+    // The largest payload any other checksum test drives is 7 bytes, which keeps the processed range far from the end
+    // of the buffer and hides any miscalculation of that range's extent. A maximum-size payload pushes the checksum
+    // postamble flush against the end of the buffer, which is the layout where a range that runs one byte short stops
+    // before the delimiter and leaves the postamble slot untouched. The size is read from the shared buffer layout,
+    // which caps the payload at the COBS limit on every board.
+    constexpr uint8_t kPayloadSize = kBufferLayout::kMaximumPayloadSize;
+
+    // The packet spans the preamble, the overhead byte, the payload, and the delimiter byte. The 8-bit polynomial
+    // makes the postamble a single byte, so it occupies the last element of the buffer.
+    constexpr uint16_t kPacketBytes = kBufferLayout::kPayloadStartIndex + kPayloadSize + 1;
+
+    uint8_t test_packet[kPacketBytes + 1];
+
+    // Fills the buffer with the low byte of each index, so that every processed byte differs from its neighbors. A
+    // uniform fill would let a processed range shifted by a byte at either end reproduce the same checksum.
+    for (uint16_t i = 0; i < static_cast<uint16_t>(sizeof(test_packet)); i++)
+    {
+        test_packet[i] = static_cast<uint8_t>(i);
+    }
+
+    // Declares the maximum payload size, which is what drives the processed range to the end of the buffer
+    test_packet[kBufferLayout::kPayloadSizeIndex] = kPayloadSize;
+
+    // Seeds the postamble slot with a sentinel, so that a generation pass stopping short of the buffer end leaves a
+    // recognizable value behind instead of a plausible checksum
+    test_packet[kPacketBytes] = 0xAA;
+
+    // Instantiates the object to be tested using the polynomial whose lookup table is verified against the published
+    // table by test_crc_processor_generate_table_crc8
+    CRCProcessor<uint8_t> crc_processor(
+        0x07,  // polynomial
+        0x00,  // initial_value
+        0x00   // final_xor_value
+    );
+
+    // Verifies that the generated packet occupies the buffer exactly, which pins the end of the processed range
+    const uint16_t result = crc_processor.CalculateChecksum<false>(test_packet);
+    TEST_ASSERT_EQUAL_UINT16(sizeof(test_packet), result);
+
+    // Verifies that the checksum overwrote the sentinel in the last element of the buffer and matches the value the
+    // processed region produces
+    TEST_ASSERT_EQUAL_UINT8(0x6F, test_packet[kPacketBytes]);
+
+    // Verifies that the maximum-size packet passes the integrity check, which additionally covers the postamble
+    TEST_ASSERT_EQUAL_UINT16(1, crc_processor.CalculateChecksum<true>(test_packet));
+
+    // Corrupts the last payload byte and verifies that the checker reports data corruption
+    test_packet[kPacketBytes - 2] ^= 0x01;
+    TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
+
+    // Restores the payload, corrupts the delimiter byte instead, and verifies that the processed range reaches
+    // through the end of the packet
+    test_packet[kPacketBytes - 2] ^= 0x01;
+    test_packet[kPacketBytes - 1] ^= 0x01;
+    TEST_ASSERT_EQUAL_UINT16(0, crc_processor.CalculateChecksum<true>(test_packet));
+}
+
+/// Verifies that the single-byte StreamMock write() overload rejects writes once the transmission buffer is full.
+void test_stream_mock_write_rejects_full_buffer()
+{
+    // Uses a deliberately tiny buffer, because the rejection branch only executes once every element of the
+    // transmission buffer is occupied, which the default 300-element buffer makes impractical to reach byte by byte.
+    StreamMock<4> mock_port;
+
+    // Extracts the stream buffer size to a local variable, so that the assertions below track the template argument
+    constexpr uint16_t kStreamBufferSize = StreamMock<4>::kStreamBufferSize;
+
+    // Initializes the input and the expected-state buffers. Has to initialize the input buffer using uint8_t and the
+    // expected buffer using int16_t, matching how the mock class stores its buffered elements.
+    const uint8_t fill_bytes[kStreamBufferSize]      = {11, 22, 33, 44};
+    const int16_t expected_buffer[kStreamBufferSize] = {11, 22, 33, 44};
+
+    // Fills the transmission buffer to capacity. The multi-byte overload is expected to accept every input byte, as
+    // the buffer starts out empty.
+    TEST_ASSERT_EQUAL_size_t(kStreamBufferSize, mock_port.write(fill_bytes, sizeof(fill_bytes)));
+    TEST_ASSERT_EQUAL_size_t(kStreamBufferSize, mock_port.tx_buffer_index);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(expected_buffer, mock_port.tx_buffer, kStreamBufferSize);
+
+    // Attempts to append one more byte. The mock has to refuse the write, since accepting it would advance the index
+    // past the end of the transmission buffer and corrupt the memory that follows it.
+    TEST_ASSERT_EQUAL_size_t(0, mock_port.write(static_cast<uint8_t>(99)));
+
+    // Verifies that the rejected write neither advanced the index nor altered the already-buffered data
+    TEST_ASSERT_EQUAL_size_t(kStreamBufferSize, mock_port.tx_buffer_index);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(expected_buffer, mock_port.tx_buffer, kStreamBufferSize);
+
+    // Verifies that the multi-byte overload also reports zero accepted bytes against a full buffer. This is a distinct
+    // case from a partially accepted write, as the copy loop never executes even once.
+    TEST_ASSERT_EQUAL_size_t(0, mock_port.write(fill_bytes, sizeof(fill_bytes)));
+    TEST_ASSERT_EQUAL_size_t(kStreamBufferSize, mock_port.tx_buffer_index);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(expected_buffer, mock_port.tx_buffer, kStreamBufferSize);
+}
+
+/// Verifies that WriteData() rejects an object that overflows the payload region by exactly one byte.
+void test_transport_layer_write_data_rejects_one_byte_overflow()
+{
+    // Initializes the tested class with an explicit 55-byte payload cap, which keeps the overflow boundary at the same
+    // byte offset on every supported board, unlike the board-dependent default cap.
+    StreamMock<60> mock_port;
+    TransportLayer<uint8_t, 55, 55> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Fills all but one byte of the payload region. Approaching the boundary from a non-zero offset is what makes the
+    // remaining space, rather than the payload cap alone, the quantity the write below is checked against.
+    const uint8_t filler[54] = {};
+    bool status              = protocol.WriteData(filler);
+    TEST_ASSERT_TRUE(status);
+    TEST_ASSERT_EQUAL_UINT8(54, protocol.get_bytes_in_transmission_buffer());
+
+    // Attempts to write two bytes into the single byte of space that remains, which overruns the payload region by
+    // exactly one byte and is therefore the smallest overflow the bound can admit.
+    constexpr uint16_t kTwoByteValue = 0xBEEF;
+    status                           = protocol.WriteData(kTwoByteValue);
+
+    // Verifies that the write was rejected and the reason was recorded
+    TEST_ASSERT_FALSE(status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the rejected write left the staged payload untouched. A tracker that advanced past the cap would
+    // make the next transmission announce a payload size the receiver rejects.
+    TEST_ASSERT_EQUAL_UINT8(54, protocol.get_bytes_in_transmission_buffer());
+
+    // Verifies that an object that exactly fills the remaining space is still accepted, which pins the boundary from
+    // the accepting side and rules out an over-tight bound.
+    constexpr uint8_t kOneByteValue = 0x5A;
+    status                          = protocol.WriteData(kOneByteValue);
+    TEST_ASSERT_TRUE(status);
+    TEST_ASSERT_EQUAL_UINT8(55, protocol.get_bytes_in_transmission_buffer());
+
+    // Verifies that a payload region with no space left accepts nothing further
+    status = protocol.WriteData(kOneByteValue);
+    TEST_ASSERT_FALSE(status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError),
+        protocol.get_runtime_status()
+    );
+    TEST_ASSERT_EQUAL_UINT8(55, protocol.get_bytes_in_transmission_buffer());
+}
+
+/// Verifies that WriteData() honors an explicitly specified object size instead of the object's full byte size.
+void test_transport_layer_write_data_partial_object()
+{
+    // Instantiates the tested class. The mock is required by the constructor but is never driven, as this test stays
+    // entirely inside the transmission buffer.
+    StreamMock<55> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Statically extracts the transmission buffer size, as CopyTransmissionData() requires an exactly matching
+    // destination buffer.
+    static constexpr uint16_t kTransmissionBufferSize =
+        TransportLayer<uint8_t, 50, 50>::get_transmission_buffer_size();
+
+    // The source object is deliberately larger than the portion written below, so a write that falls back to the
+    // object's full size stages five trailing bytes the caller never asked for.
+    const uint8_t source_object[8] = {11, 22, 33, 44, 55, 66, 77, 88};
+    constexpr size_t kWrittenBytes = 3;
+
+    bool status = protocol.WriteData(source_object, kWrittenBytes);
+    TEST_ASSERT_TRUE(status);
+
+    // Verifies that the payload size tracker advanced by the requested number of bytes alone
+    TEST_ASSERT_EQUAL_UINT8(kWrittenBytes, protocol.get_bytes_in_transmission_buffer());
+
+    // Inspects the staged bytes before anything else is written, as the size tracker alone does not reveal how many
+    // bytes the copy moved. The payload slot immediately past the partial write has to still hold the zero the buffer
+    // was initialized with, because a copy sized by the object rather than by the request leaves the object's fourth
+    // byte there.
+    uint8_t staged_buffer[kTransmissionBufferSize] = {};
+    protocol.CopyTransmissionData(staged_buffer);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(source_object, &staged_buffer[kBufferLayout::kPayloadStartIndex], kWrittenBytes);
+    TEST_ASSERT_EQUAL_UINT8(0, staged_buffer[kBufferLayout::kPayloadStartIndex + kWrittenBytes]);
+
+    // Appends a marker byte, which has to land in the payload slot immediately past the partial write for the staged
+    // payload to remain contiguous.
+    constexpr uint8_t kMarkerValue = 0xA5;
+    status                         = protocol.WriteData(kMarkerValue);
+    TEST_ASSERT_TRUE(status);
+    TEST_ASSERT_EQUAL_UINT8(kWrittenBytes + 1, protocol.get_bytes_in_transmission_buffer());
+
+    // Moves the staged payload to the reception buffer, which is the only route through which the public interface
+    // reads the payload back.
+    const bool copied = protocol.CopyTxBufferPayloadToRxBuffer();
+    TEST_ASSERT_TRUE(copied);
+
+    const uint8_t expected_payload[kWrittenBytes + 1] = {11, 22, 33, kMarkerValue};
+    uint8_t staged_payload[kWrittenBytes + 1]         = {};
+
+    status = protocol.ReadData(staged_payload);
+    TEST_ASSERT_TRUE(status);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_payload, staged_payload, sizeof(expected_payload));
+}
+
+/// Verifies that CopyTxBufferPayloadToRxBuffer() refuses to copy a payload larger than the reception buffer holds.
+void test_transport_layer_copy_payload_rejects_oversized_payload()
+{
+    // Uses asymmetric payload caps, which is the only configuration where the transmission buffer can stage a payload
+    // that the reception buffer has no room for.
+    StreamMock<55> mock_port;
+    TransportLayer<uint8_t, 50, 20> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Statically extracts the reception buffer size, as CopyReceptionData() requires an exactly matching destination.
+    static constexpr uint16_t kReceptionBufferSize = TransportLayer<uint8_t, 50, 20>::get_reception_buffer_size();
+
+    // Stages a payload that fits the transmission buffer but exceeds the reception buffer's 20-byte payload region
+    const uint8_t oversized_payload[30] = {};
+    const bool write_status             = protocol.WriteData(oversized_payload);
+    TEST_ASSERT_TRUE(write_status);
+    TEST_ASSERT_EQUAL_UINT8(sizeof(oversized_payload), protocol.get_bytes_in_transmission_buffer());
+
+    // Verifies that the copy was refused. Copying would move 30 payload bytes into a 20-byte payload region, writing
+    // past the end of the reception buffer and over the instance members stored after it.
+    const bool copied = protocol.CopyTxBufferPayloadToRxBuffer();
+    TEST_ASSERT_FALSE(copied);
+
+    // Verifies that the refused copy left the reception buffer untouched, including its payload size tracker. The test
+    // buffer is pre-filled with 11 so that a failed extraction cannot masquerade as an untouched buffer.
+    uint8_t reception_buffer_state[kReceptionBufferSize] = {};
+    uint8_t expected_buffer_state[kReceptionBufferSize]  = {};
+    memset(reception_buffer_state, 11, kReceptionBufferSize);
+    memset(expected_buffer_state, 0, kReceptionBufferSize);
+    protocol.CopyReceptionData(reception_buffer_state);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_buffer_state, reception_buffer_state, kReceptionBufferSize);
+    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that a payload filling the reception buffer's payload region exactly is still copied, which pins the
+    // guard from its accepting side.
+    protocol.ResetTransmissionBuffer();
+    const uint8_t fitting_payload[20] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20};
+    TEST_ASSERT_TRUE(protocol.WriteData(fitting_payload));
+    TEST_ASSERT_TRUE(protocol.CopyTxBufferPayloadToRxBuffer());
+    TEST_ASSERT_EQUAL_UINT8(sizeof(fitting_payload), protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the accepted copy moved the payload bytes themselves
+    uint8_t received_payload[20] = {};
+    TEST_ASSERT_TRUE(protocol.ReadData(received_payload));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(fitting_payload, received_payload, sizeof(fitting_payload));
+}
+
+/// Verifies that ReceiveData() clears the reception buffer when packet parsing fails.
+void test_transport_layer_reception_buffer_reset_after_parse_failure()
+{
+    // Initializes the tested class
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Initializes a test payload
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+
+    // Builds a well-formed packet inside the mock class tx buffer
+    protocol.WriteData(test_payload);
+    protocol.SendData();
+
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    constexpr uint16_t kPacketElements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+
+    // Overwrites the payload size byte with a value one above the instance's capacity. The parser commits that byte
+    // to the reception buffer before it range-checks it, which makes this the cheapest way to leave the buffer's
+    // payload size tracker pointing at data the instance never accepted. Derives the value from the accessor, so the
+    // byte stays exactly one above the cap if the template arguments used above are ever changed.
+    mock_port.rx_buffer[kBufferLayout::kPayloadSizeIndex] =
+        static_cast<int16_t>(protocol.get_maximum_received_payload_size() + 1);
+
+    // Verifies that the parser rejects the packet for the expected reason
+    const bool receive_status = protocol.ReceiveData();
+    TEST_ASSERT_FALSE(receive_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the rejected packet leaves no payload behind. Without the reset, the payload size tracker keeps
+    // the invalid size the parser stored, which a caller that ignores the return value reads as a received payload.
+    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the discarded packet cannot be consumed as though it were a decoded payload
+    uint8_t decoded_payload[10] = {};
+    const bool read_status      = protocol.ReadData(decoded_payload);
+    TEST_ASSERT_FALSE(read_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kReadObjectBufferError),
+        protocol.get_runtime_status()
+    );
+}
+
+/// Verifies that ReceiveData() clears the reception buffer when packet validation fails.
+void test_transport_layer_reception_buffer_reset_after_validation_failure()
+{
+    // Initializes the tested class
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Initializes a test payload
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+
+    // Builds a well-formed packet inside the mock class tx buffer
+    protocol.WriteData(test_payload);
+    protocol.SendData();
+
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    constexpr uint16_t kPacketElements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+
+    // Flips every bit of the packet's single checksum byte. This leaves the packet framing intact, so the parser
+    // completes and stores the payload size, and the packet is only rejected at the later integrity check.
+    constexpr uint16_t kChecksumIndex   = kPacketElements - 1;
+    mock_port.rx_buffer[kChecksumIndex] = static_cast<int16_t>(mock_port.tx_buffer[kChecksumIndex] ^ 0xFF);
+
+    // Verifies that the integrity check rejects the corrupted packet
+    const bool receive_status = protocol.ReceiveData();
+    TEST_ASSERT_FALSE(receive_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the corrupted packet leaves no payload behind. Without the reset, the payload size tracker keeps
+    // pointing at the raw COBS-encoded bytes the parser stored, which never passed the integrity check.
+    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the discarded packet cannot be consumed as though it were a decoded payload
+    uint8_t decoded_payload[10] = {};
+    const bool read_status      = protocol.ReadData(decoded_payload);
+    TEST_ASSERT_FALSE(read_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kReadObjectBufferError),
+        protocol.get_runtime_status()
+    );
+}
+
+/// Verifies that receiving a second packet rewinds the reception buffer's read cursor, making the new payload
+/// readable from its first byte.
+void test_transport_layer_sequential_reception_rewinds_read_cursor()
+{
+    // Initializes the tested class
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Initializes two distinct test payloads, so that reading the second packet cannot accidentally reproduce the
+    // first payload's contents. Both hold delimiter values, which exercises the COBS jump chain in each direction.
+    const uint8_t first_payload[10]  = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+    const uint8_t second_payload[10] = {11, 12, 0, 14, 15, 16, 0, 18, 19, 20};
+
+    // Both packets occupy 15 elements: the preamble (2), the COBS-encoded payload (12), and the postamble (1).
+    constexpr uint16_t kPacketElements = 15;
+
+    // Stages, sends, and receives the first packet
+    TEST_ASSERT_TRUE(protocol.WriteData(first_payload));
+    TEST_ASSERT_TRUE(protocol.SendData());
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+
+    // Consumes the entire first payload, which is what drives the read cursor away from the start of the payload
+    // region and makes the rewind observable on the next reception.
+    uint8_t first_decoded[10] = {};
+    TEST_ASSERT_TRUE(protocol.ReadData(first_decoded));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(first_payload, first_decoded, sizeof(first_payload));
+
+    // Rewinds the mock class buffers so that the second packet is written to and read from their first elements,
+    // which is the state the interface presents when the next packet arrives.
+    mock_port.flush();
+    mock_port.rx_buffer_index = 0;
+
+    // Stages, sends, and receives the second packet on the same instance
+    TEST_ASSERT_TRUE(protocol.WriteData(second_payload));
+    TEST_ASSERT_TRUE(protocol.SendData());
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(sizeof(second_payload), protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the second payload is consumed from its first byte. Unless reception rewinds the read cursor,
+    // the bytes consumed from the first payload are still counted against the second one, which leaves no readable
+    // bytes behind and fails the read outright.
+    uint8_t second_decoded[10] = {};
+    const bool read_status     = protocol.ReadData(second_decoded);
+    TEST_ASSERT_TRUE(read_status);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(second_payload, second_decoded, sizeof(second_payload));
+}
+
+/// Verifies that ReceiveData() reports kDecodingFailed when a packet clears both the framing and the integrity
+/// checks but carries a broken COBS jump chain.
+void test_transport_layer_decoding_failed_error()
+{
+    // Initializes the tested class
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Instantiates a separate CRC processor configured identically to the one the tested instance owns. Reaching the
+    // decoding stage requires restoring the packet's checksum after the corruption applied below.
+    CRCProcessor<uint8_t> crc_processor(
+        0x07,  // polynomial
+        0x00,  // initial_value
+        0x00   // final_xor_value
+    );
+
+    // Uses a payload that holds no delimiter values, so the encoder builds a single jump leading from the overhead
+    // byte straight to the delimiter appended past the payload. Breaking that one jump breaks the whole chain.
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+
+    // Builds a well-formed packet inside the mock class tx buffer
+    protocol.WriteData(test_payload);
+    protocol.SendData();
+
+    // Mirrors the packet in a byte buffer, as the CRC helper operates on the same uint8_t layout the class buffers
+    // use. The packet occupies 15 elements: the preamble (2), the encoded payload (12), and the postamble (1).
+    constexpr uint16_t kPacketElements     = 15;
+    constexpr uint16_t kDelimiterIndex     = kPacketElements - 2;
+    uint8_t packet_buffer[kPacketElements] = {};
+    for (uint16_t index = 0; index < kPacketElements; ++index)
+    {
+        packet_buffer[index] = static_cast<uint8_t>(mock_port.tx_buffer[index]);
+    }
+
+    // Confirms the encoded layout the corruption below depends on: the delimiter closes the packet and the overhead
+    // byte stores its distance to that delimiter.
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kBufferLayout::kDelimiterByte), packet_buffer[kDelimiterIndex]);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kDelimiterIndex - kBufferLayout::kOverheadByteIndex),
+        packet_buffer[kBufferLayout::kOverheadByteIndex]
+    );
+
+    // Extends the overhead byte's jump by one, which makes the decoder step past the delimiter and run out of packet
+    // instead of landing on it. The corruption is invisible to the parser: it introduces no delimiter value ahead of
+    // the packet's end and leaves the payload size byte untouched, so the packet still parses cleanly.
+    ++packet_buffer[kBufferLayout::kOverheadByteIndex];
+
+    // Recomputes the checksum over the corrupted packet, so that reception clears the integrity check and reaches
+    // the decoding stage that this test targets.
+    TEST_ASSERT_EQUAL_UINT16(kPacketElements, crc_processor.CalculateChecksum<false>(packet_buffer));
+
+    // Publishes the corrupted packet to the mock class rx buffer to simulate data reception
+    for (uint16_t index = 0; index < kPacketElements; ++index)
+    {
+        mock_port.rx_buffer[index] = static_cast<int16_t>(packet_buffer[index]);
+    }
+
+    // Verifies that the packet is rejected at the decoding stage
+    const bool receive_status = protocol.ReceiveData();
+    TEST_ASSERT_FALSE(receive_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kDecodingFailed),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the undecodable packet leaves no payload behind, as its bytes remain COBS-encoded
+    TEST_ASSERT_EQUAL_UINT8(0, protocol.get_bytes_in_reception_buffer());
+}
+
+/// Verifies that SendData() hands the communication interface exactly the constructed packet and nothing more.
+void test_transport_layer_send_data_bounds_transmitted_byte_count()
+{
+    // Sizes the mock transmission buffer well above the packet, so that any byte written past the packet lands in the
+    // buffer instead of being dropped by the mock's own end-of-buffer guard.
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Fills the mock buffers with the invalid-value sentinel, which makes every element the transmission touches
+    // distinguishable from the elements it leaves alone.
+    mock_port.Reset();
+
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+
+    // Derives the packet length from the layout constants rather than a literal: the preamble and overhead bytes
+    // (kPayloadStartIndex), the payload, the appended delimiter byte, and the single-byte checksum postamble.
+    constexpr uint16_t kExpectedPacketSize =
+        kBufferLayout::kPayloadStartIndex + sizeof(test_payload) + 1 + sizeof(uint8_t);
+
+    protocol.WriteData(test_payload);
+    const bool send_status = protocol.SendData();
+
+    TEST_ASSERT_TRUE(send_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
+
+    // Verifies that the interface received the packet and nothing else. Sending trailing buffer bytes would leave the
+    // receiver treating them as the opening bytes of the next packet.
+    TEST_ASSERT_EQUAL_size_t(kExpectedPacketSize, mock_port.tx_buffer_index);
+
+    // Verifies that the element immediately past the packet still holds the sentinel written by the reset above
+    TEST_ASSERT_EQUAL_INT16(-1, mock_port.tx_buffer[kExpectedPacketSize]);
+}
+
+/// Verifies that a payload of the minimum supported size survives a full transmission and reception cycle.
+void test_transport_layer_minimum_payload_round_trip()
+{
+    // Initializes the tested class
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // A single byte is the smallest payload the protocol accepts, so it is the value that both the transmission-side
+    // and the reception-side size guards evaluate at their accepting boundary.
+    constexpr uint8_t kTestValue = 0xA7;
+
+    const bool write_status = protocol.WriteData(kTestValue);
+    TEST_ASSERT_TRUE(write_status);
+    TEST_ASSERT_EQUAL_UINT8(1, protocol.get_bytes_in_transmission_buffer());
+
+    // Verifies that the transmission side treats the minimum-size payload as valid instead of rejecting it as empty
+    const bool send_status = protocol.SendData();
+    TEST_ASSERT_TRUE(send_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
+
+    // The packet occupies 6 elements: the preamble (2), the COBS-encoded payload (3), and the checksum postamble (1).
+    constexpr uint16_t kPacketElements = 6;
+    TEST_ASSERT_EQUAL_size_t(kPacketElements, mock_port.tx_buffer_index);
+
+    // Loops the packet back into the mock reception buffer to simulate receiving it
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+
+    // Verifies that the reception side accepts the minimum-size payload size byte instead of rejecting it as invalid
+    const bool receive_status = protocol.ReceiveData();
+    TEST_ASSERT_TRUE(receive_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+    TEST_ASSERT_EQUAL_UINT8(1, protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the single payload byte survived the round trip unchanged
+    uint8_t received_value = 0;
+    const bool read_status = protocol.ReadData(received_value);
+    TEST_ASSERT_TRUE(read_status);
+    TEST_ASSERT_EQUAL_UINT8(kTestValue, received_value);
+}
+
+/// Verifies that ReceiveData() accepts a payload size equal to the reception cap and rejects the next size up.
+void test_transport_layer_received_payload_size_boundary()
+{
+    // Reads the cap from the accessor rather than restating the template argument, so the boundary the test drives is
+    // the one the parser compares the incoming payload size byte against.
+    constexpr uint8_t kReceivedCap = TransportLayer<uint8_t, 50, 50>::get_maximum_received_payload_size();
+
+    // An at-cap payload produces a packet of the preamble (2), the COBS overhead byte, the payload, the delimiter
+    // byte, and the single-byte checksum postamble. Sizing the mock to exactly that leaves the parser no slack to
+    // read past the packet it is given.
+    constexpr uint16_t kPacketElements = kReceivedCap + 5;
+
+    StreamMock<kPacketElements> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Fills the payload with non-delimiter values, so the encoded packet carries its only delimiter at the end and the
+    // parser has to consume every payload byte before it stops.
+    uint8_t at_cap_payload[kReceivedCap] = {};
+    for (uint8_t index = 0; index < kReceivedCap; ++index)
+    {
+        at_cap_payload[index] = static_cast<uint8_t>(index + 1);
+    }
+
+    // Transmits the at-cap payload and loops the resulting packet back into the reception path
+    TEST_ASSERT_TRUE(protocol.WriteData(at_cap_payload));
+    TEST_ASSERT_TRUE(protocol.SendData());
+    TEST_ASSERT_EQUAL_size_t(kPacketElements, mock_port.tx_buffer_index);
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+
+    // Verifies that a payload size equal to the cap is accepted. The packet it produces fills the reception buffer to
+    // its final byte, so a buffer sized one byte short of an at-cap packet is caught here as well.
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+    TEST_ASSERT_EQUAL_UINT8(kReceivedCap, protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the at-cap payload survived the round trip intact
+    uint8_t decoded_payload[kReceivedCap] = {};
+    TEST_ASSERT_TRUE(protocol.ReadData(decoded_payload));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(at_cap_payload, decoded_payload, kReceivedCap);
+
+    // Rewinds the interface read cursor, so the same packet is parsed a second time
+    mock_port.rx_buffer_index = 0;
+
+    // Raises the payload size byte by one. Nothing else about the packet changes, so the size comparison alone decides
+    // the outcome of the second reception.
+    mock_port.rx_buffer[kBufferLayout::kPayloadSizeIndex] = static_cast<int16_t>(kReceivedCap + 1);
+
+    TEST_ASSERT_FALSE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kInvalidPayloadSize),
+        protocol.get_runtime_status()
+    );
+}
+
+/// Verifies that Available() reports a readable packet at exactly the minimum packet size and withholds it one byte
+/// below that size.
+void test_transport_layer_available_threshold_boundary()
+{
+    // Mirrors the threshold the class derives from the buffer layout: the smallest payload, the two preamble bytes,
+    // the COBS overhead and delimiter bytes, and the postamble of the uint8_t checksum.
+    constexpr uint16_t kMinimumPacketSize =
+        kBufferLayout::kMinimumPayloadSize + kBufferLayout::kOverheadByteIndex + 2 + sizeof(uint8_t);
+
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // The mock counts the valid values that precede the first invalid one, so marking the element that follows a
+    // threshold-sized run makes the interface report exactly a packet's worth of readable bytes.
+    mock_port.rx_buffer[kMinimumPacketSize] = -1;
+
+    int32_t readable_bytes = mock_port.available();
+    TEST_ASSERT_EQUAL_INT32(kMinimumPacketSize, readable_bytes);
+
+    // A minimum-size packet occupies exactly this many bytes, so a threshold that withholds the report here strands
+    // every such packet in the interface buffer for good.
+    TEST_ASSERT_TRUE(protocol.Available());
+
+    // Shortens the readable run by a single byte, which is the largest run that cannot hold a packet.
+    mock_port.rx_buffer[kMinimumPacketSize - 1] = -1;
+
+    readable_bytes = mock_port.available();
+    TEST_ASSERT_EQUAL_INT32(kMinimumPacketSize - 1, readable_bytes);
+    TEST_ASSERT_FALSE(protocol.Available());
+}
+
+/// Verifies that ReceiveData() preserves an unread payload when the communication interface holds fewer bytes than a
+/// packet requires.
+void test_transport_layer_short_stream_preserves_reception_buffer()
+{
+    // Mirrors the threshold the class derives from the buffer layout: the smallest payload, the two preamble bytes,
+    // the COBS overhead and delimiter bytes, and the postamble of the uint8_t checksum.
+    constexpr uint16_t kMinimumPacketSize =
+        kBufferLayout::kMinimumPayloadSize + kBufferLayout::kOverheadByteIndex + 2 + sizeof(uint8_t);
+
+    StreamMock<50> mock_port;
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Stages a payload and receives it back without consuming it, which is the state a caller that polls the
+    // interface before reading the previous packet leaves the instance in.
+    const uint8_t test_payload[10] = {1, 2, 3, 4, 0, 0, 7, 8, 9, 10};
+    TEST_ASSERT_TRUE(protocol.WriteData(test_payload));
+    TEST_ASSERT_TRUE(protocol.SendData());
+
+    // Copies the packet into the mock class rx buffer to simulate data reception. The packet occupies 15 elements:
+    // the preamble (2), the COBS-encoded payload (12), and the CRC checksum postamble (1).
+    constexpr uint16_t kPacketElements = 15;
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(sizeof(test_payload), protocol.get_bytes_in_reception_buffer());
+
+    // Leaves the interface holding one byte fewer than a packet requires, which is the largest stream that still
+    // aborts reception before any parsing begins. Filling the run with start bytes ensures that a reception which
+    // reaches the parser consumes them instead of returning immediately.
+    mock_port.Reset();
+    for (uint16_t index = 0; index < kMinimumPacketSize - 1; ++index)
+    {
+        mock_port.rx_buffer[index] = kBufferLayout::kStartByte;
+    }
+
+    // Verifies that the aborted poll reports the non-error status rather than a parsing failure
+    TEST_ASSERT_FALSE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kNoBytesToParse),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the payload received earlier is still staged in full
+    TEST_ASSERT_EQUAL_UINT8(sizeof(test_payload), protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the preserved payload still reads back byte for byte, which additionally confirms that the read
+    // cursor was left where the earlier reception placed it.
+    uint8_t decoded_payload[10] = {};
+    TEST_ASSERT_TRUE(protocol.ReadData(decoded_payload));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(test_payload, decoded_payload, sizeof(test_payload));
+}
+
+/// Verifies that ReceiveData() completes a packet whose bytes arrive after stalls that each end before the reception
+/// timeout, even when those stalls add up to more than that timeout.
+void test_transport_layer_reception_resumes_after_short_stall()
+{
+    // Builds a well-formed packet by hand, which drives the reception path without a transmission having to fill a
+    // mock buffer first. The layout is: START, PAYLOAD_SIZE, OVERHEAD, PAYLOAD[10], DELIMITER, CRC[1].
+    uint8_t packet[15] = {129, 10, 0, 1, 2, 3, 0, 0, 6, 0, 8, 0, 0, 0, 0};
+    COBSProcessor::EncodePayload(packet);
+
+    CRCProcessor<uint8_t> crc_processor(
+        0x07,  // polynomial
+        0x00,  // initial_value
+        0x00   // final_xor_value
+    );
+    crc_processor.CalculateChecksum<false>(packet);
+
+    // Releases exactly the number of leading bytes the class requires before it begins parsing, then spaces every
+    // remaining byte by an interval that stays well below the reception timeout while the sum of those intervals
+    // exceeds it. A reception that restarts its stall window on each received byte therefore completes, and one that
+    // measures the whole packet against a single window abandons the packet partway through.
+    constexpr uint16_t kImmediateBytes    = 6;
+    constexpr uint32_t kStallMicroseconds = 2500;
+
+    StallingStream stalling_port(packet, static_cast<uint16_t>(sizeof(packet)), kImmediateBytes, kStallMicroseconds);
+    TransportLayer<uint8_t, 50, 50> protocol(
+        stalling_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+
+    // Verifies that the resumed reception reassembled the payload rather than a truncated or shifted copy of it
+    const uint8_t expected_payload[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
+    uint8_t decoded_payload[10]        = {};
+    TEST_ASSERT_EQUAL_UINT8(sizeof(expected_payload), protocol.get_bytes_in_reception_buffer());
+    TEST_ASSERT_TRUE(protocol.ReadData(decoded_payload));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_payload, decoded_payload, sizeof(expected_payload));
+
+#ifdef RUN_WIDE_CRC_TESTS
+    // Repeats the exercise with a two-byte checksum postamble, which is the only configuration in which the postamble
+    // loop reads more than one byte and therefore the only one in which its own stall window is observable. The
+    // interval is widened so that the two postamble bytes alone outlast the reception timeout when their arrivals are
+    // measured against a single window.
+    constexpr uint16_t kWideImmediateBytes    = 7;
+    constexpr uint32_t kWideStallMicroseconds = 6000;
+
+    uint8_t wide_packet[16] = {129, 10, 0, 1, 2, 3, 0, 0, 6, 0, 8, 0, 0, 0, 0, 0};
+    COBSProcessor::EncodePayload(wide_packet);
+
+    CRCProcessor<uint16_t> wide_crc_processor(
+        0x1021,  // polynomial
+        0xFFFF,  // initial_value
+        0x0000   // final_xor_value
+    );
+    wide_crc_processor.CalculateChecksum<false>(wide_packet);
+
+    StallingStream wide_stalling_port(
+        wide_packet,
+        static_cast<uint16_t>(sizeof(wide_packet)),
+        kWideImmediateBytes,
+        kWideStallMicroseconds
+    );
+    TransportLayer<uint16_t, 50, 50> wide_protocol(
+        wide_stalling_port,
+        0x1021,  // crc_polynomial
+        0xFFFF,  // crc_initial_value
+        0x0000   // crc_final_xor_value
+    );
+
+    TEST_ASSERT_TRUE(wide_protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        wide_protocol.get_runtime_status()
+    );
+
+    uint8_t wide_decoded_payload[10] = {};
+    TEST_ASSERT_TRUE(wide_protocol.ReadData(wide_decoded_payload));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(expected_payload, wide_decoded_payload, sizeof(expected_payload));
+#endif
+}
+
+/// Verifies that the defaulted payload capacity template parameters resolve to the value the board's serial buffer
+/// size implies.
+void test_transport_layer_default_template_parameters()
+{
+    // The instance transfers no data here, so the mock only has to satisfy the constructor's Stream reference.
+    StreamMock<8> mock_port;
+
+    // Instantiates the class with both payload capacity parameters defaulted, which is the configuration the library
+    // examples rely on and the only one that resolves the capacities from the board's serial buffer size.
+    TransportLayer<uint8_t> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // Recomputes the capacity with the expression the class template declares, so the expectation follows the board
+    // (254 on Teensy, 248 on SAM, 56 on AVR) instead of restating a hard-coded number. Every other capacity assertion
+    // in this suite merely restates an explicit template argument, which leaves the defaults unverified.
+    static constexpr uint8_t kExpectedPayloadSize =
+        min(kSerialBufferSize - kMaximumPacketMetadataSize, kBufferLayout::kMaximumPayloadSize);
+
+    TEST_ASSERT_EQUAL_UINT8(kExpectedPayloadSize, protocol.get_maximum_transmitted_payload_size());
+    TEST_ASSERT_EQUAL_UINT8(kExpectedPayloadSize, protocol.get_maximum_received_payload_size());
+
+    // Verifies that the buffers sized from the defaults follow the packet layout: payload + preamble (2) + COBS (2) +
+    // postamble (1).
+    TEST_ASSERT_EQUAL_UINT16(
+        static_cast<uint16_t>(kExpectedPayloadSize) + 5,
+        TransportLayer<uint8_t>::get_transmission_buffer_size()
+    );
+    TEST_ASSERT_EQUAL_UINT16(
+        static_cast<uint16_t>(kExpectedPayloadSize) + 5,
+        TransportLayer<uint8_t>::get_reception_buffer_size()
+    );
+
+    // The widest metadata a packet can carry is the four framing bytes (start byte, payload size, overhead byte, and
+    // delimiter) plus a four-byte checksum postamble. Deriving the bound from the packet anatomy rather than from
+    // kMaximumPacketMetadataSize keeps the two assertions below independent of the constant they check.
+    constexpr uint16_t kWidestPacketMetadata = 8;
+
+    // Verifies that a full-capacity payload still fits the board's serial buffer when it carries the widest postamble
+    // any supported polynomial produces, which is the reservation the capping expression exists to make.
+    TEST_ASSERT_TRUE(kExpectedPayloadSize + kWidestPacketMetadata <= kSerialBufferSize);
+
+    // Verifies that the default is no smaller than it has to be: one more payload byte would either overflow the
+    // board's serial buffer or exceed the COBS ceiling.
+    TEST_ASSERT_TRUE(
+        kExpectedPayloadSize == kBufferLayout::kMaximumPayloadSize ||
+        kExpectedPayloadSize + 1 + kWidestPacketMetadata > kSerialBufferSize
+    );
+}
+
+/// Verifies that TransportLayer operates at the smallest payload capacity its template parameters accept.
+void test_transport_layer_minimum_payload_capacity()
+{
+    // Sizes the mock above the six-element packet, which leaves room to mark the element that follows the packet as
+    // unavailable.
+    StreamMock<8> mock_port;
+
+    // Collapses both payload bounds onto 1, so the single legal payload size sits on the lower and the upper bound of
+    // the parser's payload size check at the same time and the write path runs with one byte of available space.
+    TransportLayer<uint8_t, 1, 1> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    TEST_ASSERT_EQUAL_UINT8(1, protocol.get_maximum_transmitted_payload_size());
+    TEST_ASSERT_EQUAL_UINT8(1, protocol.get_maximum_received_payload_size());
+
+    // Statically extracts the buffer sizes, as the template argument commas would otherwise split the assertion
+    // macro's argument list.
+    static constexpr uint16_t kTransmissionBufferSize = TransportLayer<uint8_t, 1, 1>::get_transmission_buffer_size();
+    static constexpr uint16_t kReceptionBufferSize    = TransportLayer<uint8_t, 1, 1>::get_reception_buffer_size();
+
+    // Verifies the buffer arithmetic at its minimum: payload (1) + preamble (2) + COBS (2) + postamble (1).
+    TEST_ASSERT_EQUAL_UINT16(6, kTransmissionBufferSize);
+    TEST_ASSERT_EQUAL_UINT16(6, kReceptionBufferSize);
+
+    // Uses the delimiter value as the payload, so the encoder has to build a delimiter chain even at this size and
+    // the decoder has to restore that byte for the comparison below to hold.
+    constexpr uint8_t kPayloadByte = 0;
+    TEST_ASSERT_TRUE(protocol.WriteData(kPayloadByte));
+    TEST_ASSERT_EQUAL_UINT8(1, protocol.get_bytes_in_transmission_buffer());
+
+    // Verifies that the one byte of capacity is now exhausted, which exercises the write path at zero space left.
+    TEST_ASSERT_FALSE(protocol.WriteData(kPayloadByte));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError),
+        protocol.get_runtime_status()
+    );
+
+    TEST_ASSERT_TRUE(protocol.SendData());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
+
+    // The smallest packet this library can produce occupies exactly six elements.
+    constexpr uint16_t kPacketElements = 6;
+    TEST_ASSERT_EQUAL_size_t(kPacketElements, mock_port.tx_buffer_index);
+
+    // Copies the packet into the mock reception buffer to simulate packet reception.
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketElements * sizeof(mock_port.rx_buffer[0]));
+
+    // Invalidates the element that follows the packet. This leaves exactly as many buffered bytes as the reception
+    // threshold demands, so the packet is both the smallest the parser accepts and the smallest that clears that
+    // threshold.
+    mock_port.rx_buffer[kPacketElements] = -1;
+
+    // Verifies that the parser accepts a payload size byte that sits on both of its bounds at once.
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+    TEST_ASSERT_EQUAL_UINT8(1, protocol.get_bytes_in_reception_buffer());
+
+    // Initializes the destination to a value the payload cannot produce, so a read that transfers nothing is visible.
+    uint8_t received_byte = 111;
+    TEST_ASSERT_TRUE(protocol.ReadData(received_byte));
+    TEST_ASSERT_EQUAL_UINT8(kPayloadByte, received_byte);
+
+    // Verifies that the single payload byte is consumed, which exercises the read path at zero remaining bytes.
+    TEST_ASSERT_FALSE(protocol.ReadData(received_byte));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kReadObjectBufferError),
+        protocol.get_runtime_status()
+    );
+}
+
+/// Verifies that TransportLayer sends and receives a payload that fills the board's transmitted payload capacity.
+void test_transport_layer_maximum_payload_round_trip()
+{
+    // Resolves the board's default payload capacity at compile time. The capacity differs per board (254 on Teensy,
+    // 248 on SAM, 56 on AVR), so every size below is derived from the accessors rather than hard-coded.
+    static constexpr uint8_t kPayloadSize = TransportLayer<uint8_t>::get_maximum_transmitted_payload_size();
+
+    // A packet occupies the preamble (2), the COBS-encoded payload (payload + 2), and the checksum postamble (1),
+    // which is exactly the size of the instance's transmission buffer.
+    static constexpr uint16_t kPacketSize = TransportLayer<uint8_t>::get_transmission_buffer_size();
+
+    StreamMock<kPacketSize> mock_port;
+    TransportLayer<uint8_t> protocol(
+        mock_port,
+        0x07,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0x00   // crc_final_xor_value
+    );
+
+    // The round trip requires both capacities to agree, as the received payload has to fit the reception buffer.
+    TEST_ASSERT_EQUAL_UINT8(kPayloadSize, protocol.get_maximum_received_payload_size());
+
+    // Fills the payload in a loop, which keeps the AVR stack free of a large brace initializer. The payload holds no
+    // delimiter values, so the overhead byte ends up measuring the distance to the delimiter appended past the
+    // payload, which is payload_size + 1. On the boards whose capacity reaches the COBS ceiling that distance is 255,
+    // the largest value a single overhead byte can express and the boundary the COBSProcessor static assertion
+    // protects.
+    uint8_t test_payload[kPayloadSize];
+    for (uint16_t i = 0; i < kPayloadSize; i++)
+    {
+        test_payload[i] = static_cast<uint8_t>(i + 1);
+    }
+
+    // Verifies that a payload matching the capacity exactly is accepted.
+    TEST_ASSERT_TRUE(protocol.WriteData(test_payload));
+    TEST_ASSERT_EQUAL_UINT8(kPayloadSize, protocol.get_bytes_in_transmission_buffer());
+
+    // Verifies that the payload region is now exhausted, which confirms the payload above filled it to the last byte.
+    constexpr uint8_t kExtraByte = 7;
+    TEST_ASSERT_FALSE(protocol.WriteData(kExtraByte));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kWriteObjectBufferError),
+        protocol.get_runtime_status()
+    );
+
+    TEST_ASSERT_TRUE(protocol.SendData());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
+
+    // Verifies that the interface accepted the entire packet and that the packet advertises the full payload size.
+    TEST_ASSERT_EQUAL_size_t(kPacketSize, mock_port.tx_buffer_index);
+    TEST_ASSERT_EQUAL_UINT8(
+        kPayloadSize,
+        static_cast<uint8_t>(mock_port.tx_buffer[kBufferLayout::kPayloadSizeIndex])
+    );
+
+    // Verifies the overhead byte at its largest value. A delimiter-free payload leaves the encoder's tracker on the
+    // appended delimiter, so the overhead has to span the whole payload plus that delimiter.
+    TEST_ASSERT_EQUAL_UINT16(
+        static_cast<uint16_t>(kPayloadSize) + 1,
+        static_cast<uint16_t>(mock_port.tx_buffer[kBufferLayout::kOverheadByteIndex])
+    );
+
+    // Copies the packet into the mock reception buffer to simulate packet reception.
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, kPacketSize * sizeof(mock_port.rx_buffer[0]));
+
+    // Verifies that the parser accepts a payload size byte sitting exactly on its upper bound.
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+    TEST_ASSERT_EQUAL_UINT8(kPayloadSize, protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the full-capacity payload survives the round trip byte for byte.
+    uint8_t received_payload[kPayloadSize] = {};
+    TEST_ASSERT_TRUE(protocol.ReadData(received_payload));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(test_payload, received_payload, kPayloadSize);
+}
+
+/// Verifies that TransportLayer forwards the reflection flag to its CRC instance and round-trips a packet whose
+/// checksum is computed least significant bit first.
+void test_transport_layer_reflected_crc_round_trip()
+{
+    // Sizes the mock above the 15-element packet the 10-byte payload produces.
+    StreamMock<24> mock_port;
+
+    // Enables reflection through the fifth constructor argument, which every other instantiation in this suite omits.
+    // The non-zero final XOR value additionally forces verification through the reflected residue branch, as a zero
+    // XOR value produces the same residue in both modes. An 8-bit polynomial keeps the lookup table small enough to
+    // run this test on every supported board.
+    TransportLayer<uint8_t, 50, 50> protocol(
+        mock_port,
+        0x31,  // crc_polynomial
+        0x00,  // crc_initial_value
+        0xFF,  // crc_final_xor_value
+        true   // crc_reflected
+    );
+
+    const uint8_t test_payload[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
+
+    protocol.WriteData(test_payload);
+    TEST_ASSERT_TRUE(protocol.SendData());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
+
+    // Rebuilds the expected packet using a CRC instance configured in the same reflected mode. The layout is START,
+    // PAYLOAD_SIZE, OVERHEAD, PAYLOAD[10], DELIMITER, CRC[1].
+    uint8_t reflected_packet[15] = {129, 10, 0, 1, 2, 3, 0, 0, 6, 0, 8, 0, 0, 0, 0};
+    COBSProcessor::EncodePayload(reflected_packet);
+    auto reflected_crc = CRCProcessor<uint8_t>(
+        0x31,  // polynomial
+        0x00,  // initial_value
+        0xFF,  // final_xor_value
+        true   // reflected
+    );
+    TEST_ASSERT_EQUAL_UINT16(15, reflected_crc.CalculateChecksum<false>(reflected_packet));
+
+    // Builds the same packet with reflection disabled. The two configurations share every other parameter, so the
+    // checksum they produce differs only because of the reflection setting.
+    uint8_t plain_packet[15] = {129, 10, 0, 1, 2, 3, 0, 0, 6, 0, 8, 0, 0, 0, 0};
+    COBSProcessor::EncodePayload(plain_packet);
+    auto plain_crc = CRCProcessor<uint8_t>(
+        0x31,  // polynomial
+        0x00,  // initial_value
+        0xFF,  // final_xor_value
+        false  // reflected
+    );
+    plain_crc.CalculateChecksum<false>(plain_packet);
+
+    // Pins both checksums to the values their configurations produce for this packet. Comparing the two against each
+    // other alone would not detect a defect inside CRCProcessor, as such a defect moves the instance's checksum and
+    // the independently computed one together. The two values are pure byte arithmetic, so they hold on every board.
+    TEST_ASSERT_EQUAL_HEX8(0x98, reflected_packet[14]);
+    TEST_ASSERT_EQUAL_HEX8(0x9E, plain_packet[14]);
+
+    // Confirms that the two configurations disagree on this payload, which is what makes the packet comparison below
+    // sensitive to the reflection flag reaching the CRC instance.
+    TEST_ASSERT_NOT_EQUAL_UINT16(plain_packet[14], reflected_packet[14]);
+
+    // Verifies that the transmitted packet carries the reflected checksum rather than the non-reflected one.
+    for (uint8_t i = 0; i < static_cast<uint8_t>(sizeof(reflected_packet)); i++)
+    {
+        TEST_ASSERT_EQUAL_UINT8(reflected_packet[i], static_cast<uint8_t>(mock_port.tx_buffer[i]));
+    }
+
+    // Copies the packet into the mock reception buffer to simulate packet reception.
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(reflected_packet) * sizeof(mock_port.rx_buffer[0]));
+
+    // Verifies that validation accepts the packet, which requires the reflected residue to match the reflected
+    // checksum computed over the packet and its postamble.
+    TEST_ASSERT_TRUE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+    TEST_ASSERT_EQUAL_UINT8(10, protocol.get_bytes_in_reception_buffer());
+
+    uint8_t decoded_payload[10] = {};
+    TEST_ASSERT_TRUE(protocol.ReadData(decoded_payload));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(test_payload, decoded_payload, sizeof(test_payload));
+
+    // Verifies that a corrupted packet is still rejected, so the reflected verification path is not passing every
+    // packet indiscriminately.
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(reflected_packet) * sizeof(mock_port.rx_buffer[0]));
+    mock_port.rx_buffer_index = 0;
+    mock_port.rx_buffer[14] ^= 0x01;  // Corrupts the checksum postamble byte
+    TEST_ASSERT_FALSE(protocol.ReceiveData());
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kCRCCheckFailed),
+        protocol.get_runtime_status()
+    );
+}
+
+#ifdef RUN_WIDE_CRC_TESTS
+/// Verifies that TransportLayer sends, parses, and validates a packet when a 32-bit polynomial widens the CRC
+/// checksum postamble to four bytes.
+void test_transport_layer_crc32_round_trip()
+{
+    // Sizes the mock above the 18-element packet, which leaves room to mark the element that follows the postamble
+    // as unavailable.
+    StreamMock<64> mock_port;
+
+    // Uses a 32-bit polynomial, which is the only configuration that stretches the checksum postamble to four bytes
+    // and therefore the only one that exercises every size the class derives from the postamble length.
+    TransportLayer<uint32_t, 50, 50> protocol(
+        mock_port,
+        0x04C11DB7,  // crc_polynomial
+        0xFFFFFFFF,  // crc_initial_value
+        0xFFFFFFFF   // crc_final_xor_value
+    );
+
+    // Statically extracts the buffer sizes, as the template argument commas would otherwise split the assertion
+    // macro's argument list.
+    static constexpr uint16_t kTransmissionBufferSize =
+        TransportLayer<uint32_t, 50, 50>::get_transmission_buffer_size();
+    static constexpr uint16_t kReceptionBufferSize = TransportLayer<uint32_t, 50, 50>::get_reception_buffer_size();
+
+    // Verifies that both staging buffers reserve four bytes for the postamble: payload (50) + preamble (2) +
+    // COBS (2) + postamble (4).
+    TEST_ASSERT_EQUAL_UINT16(58, kTransmissionBufferSize);
+    TEST_ASSERT_EQUAL_UINT16(58, kReceptionBufferSize);
+
+    // Instantiates a separate CRC encoder used to verify the processing results. Its settings must match those used
+    // by the TransportLayer instance.
+    auto crc_class = CRCProcessor<uint32_t>(
+        0x04C11DB7,  // polynomial
+        0xFFFFFFFF,  // initial_value
+        0xFFFFFFFF   // final_xor_value
+    );
+
+    // Uses a payload with embedded delimiter values, so the packet also carries a COBS-encoded delimiter chain.
+    const uint8_t test_array[10] = {1, 2, 3, 0, 0, 6, 0, 8, 0, 0};
+
+    protocol.WriteData(test_array);
+    const bool send_status = protocol.SendData();
+    TEST_ASSERT_TRUE(send_status);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(kTransportStatusCodes::kPacketSent), protocol.get_runtime_status());
+
+    // Rebuilds the expected packet by hand. The layout is START, PAYLOAD_SIZE, OVERHEAD, PAYLOAD[10], DELIMITER,
+    // CRC[4], so the four checksum bytes place the last packet byte at index 17.
+    uint8_t buffer_array[18] = {129, 10, 0, 1, 2, 3, 0, 0, 6, 0, 8, 0, 0, 0, 0, 0, 0, 0};
+    COBSProcessor::EncodePayload(buffer_array);
+
+    // Verifies that the four-byte postamble extends the packet to 18 bytes rather than the 16 a two-byte checksum
+    // would produce.
+    TEST_ASSERT_EQUAL_UINT16(18, crc_class.CalculateChecksum<false>(buffer_array));
+
+    // Verifies that the transmitted packet matches the manually constructed one, including all four checksum bytes.
+    for (uint8_t i = 0; i < static_cast<uint8_t>(sizeof(buffer_array)); i++)
+    {
+        TEST_ASSERT_EQUAL_UINT8(buffer_array[i], static_cast<uint8_t>(mock_port.tx_buffer[i]));
+    }
+    TEST_ASSERT_EQUAL_size_t(sizeof(buffer_array), mock_port.tx_buffer_index);
+
+    // Copies the packet into the mock reception buffer to simulate packet reception.
+    memcpy(mock_port.rx_buffer, mock_port.tx_buffer, sizeof(buffer_array) * sizeof(mock_port.rx_buffer[0]));
+
+    // Invalidates the element that follows the postamble. Reception has to stop after the fourth checksum byte, so a
+    // parser that consumes a fifth byte stalls here and reports kPostambleTimeoutError instead.
+    mock_port.rx_buffer[sizeof(buffer_array)] = -1;
+
+    const bool receive_status = protocol.ReceiveData();
+    TEST_ASSERT_TRUE(receive_status);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived),
+        protocol.get_runtime_status()
+    );
+    TEST_ASSERT_EQUAL_UINT8(10, protocol.get_bytes_in_reception_buffer());
+
+    // Verifies that the payload survives the round trip, which requires the CRC check to have passed over the packet
+    // and all four of its checksum bytes.
+    uint8_t decoded_array[10] = {};
+    TEST_ASSERT_TRUE(protocol.ReadData(decoded_array));
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(test_array, decoded_array, sizeof(test_array));
+
+    // Verifies the reception threshold, which the four-byte postamble raises to nine bytes. Resets the mock first, as
+    // the reception above consumed part of its buffer.
+    mock_port.Reset();
+    for (uint16_t i = 0; i < 8; i++)
+    {
+        mock_port.rx_buffer[i] = 0;
+    }
+    TEST_ASSERT_FALSE(protocol.Available());
+
+    // Supplies the ninth byte, which completes the smallest packet a four-byte postamble allows: payload (1) +
+    // preamble (2) + COBS (2) + postamble (4).
+    mock_port.rx_buffer[8] = 0;
+    TEST_ASSERT_TRUE(protocol.Available());
+}
+#endif
+
 /// Specifies the test functions to be executed and controls their runtime.
 int RunUnityTests()
 {
@@ -1459,15 +3119,18 @@ int RunUnityTests()
     RUN_TEST(test_crc_processor_checksum_crc8);
     RUN_TEST(test_crc_processor_checksum_crc8_reflected);
 
-#ifdef RUN_WIDE_CRC_TESTS
+#ifdef RUN_CRC16_TESTS
     RUN_TEST(test_crc_processor_generate_table_crc16);
     RUN_TEST(test_crc_processor_generate_table_crc16_reflected);
-    RUN_TEST(test_crc_processor_generate_table_crc32);
-    RUN_TEST(test_crc_processor_generate_table_crc32_reflected);
     RUN_TEST(test_crc_processor_calculate_checksum);
     RUN_TEST(test_crc_processor_nonzero_final_xor);
     RUN_TEST(test_crc_processor_checksum_crc16);
     RUN_TEST(test_crc_processor_checksum_crc16_reflected);
+#endif
+
+#ifdef RUN_WIDE_CRC_TESTS
+    RUN_TEST(test_crc_processor_generate_table_crc32);
+    RUN_TEST(test_crc_processor_generate_table_crc32_reflected);
     RUN_TEST(test_crc_processor_checksum_crc32);
     RUN_TEST(test_crc_processor_checksum_crc32_reflected);
 #endif
@@ -1488,6 +3151,54 @@ int RunUnityTests()
     RUN_TEST(test_transport_layer_delimiter_found_too_early_error);
     RUN_TEST(test_transport_layer_empty_payload_error);
     RUN_TEST(test_transport_layer_partial_send_error);
+
+
+    // Shared Assets
+    RUN_TEST(test_shared_assets_status_code_values);
+    RUN_TEST(test_shared_assets_buffer_layout_constants);
+
+    // COBS Processor boundaries
+    RUN_TEST(test_cobs_processor_maximum_overhead_distance);
+    RUN_TEST(test_cobs_processor_delimiter_at_first_payload_byte);
+
+    // CRC Processor parameters
+    RUN_TEST(test_crc_processor_reflected_initial_value_is_bit_reversed);
+    RUN_TEST(test_crc_processor_reflected_final_xor_is_not_reflected);
+    RUN_TEST(test_crc_processor_checksum_crc8_nonzero_final_xor);
+    RUN_TEST(test_crc_processor_checksum_crc8_nonzero_initial_value);
+    RUN_TEST(test_crc_processor_maximum_payload_size);
+
+    // Stream Mock hardening
+    RUN_TEST(test_stream_mock_write_rejects_full_buffer);
+
+    // TransportLayer buffer bounds
+    RUN_TEST(test_transport_layer_write_data_rejects_one_byte_overflow);
+    RUN_TEST(test_transport_layer_write_data_partial_object);
+    RUN_TEST(test_transport_layer_copy_payload_rejects_oversized_payload);
+
+    // TransportLayer post-failure reception state
+    RUN_TEST(test_transport_layer_reception_buffer_reset_after_parse_failure);
+    RUN_TEST(test_transport_layer_reception_buffer_reset_after_validation_failure);
+    RUN_TEST(test_transport_layer_sequential_reception_rewinds_read_cursor);
+    RUN_TEST(test_transport_layer_decoding_failed_error);
+
+    // TransportLayer transmission and reception boundaries
+    RUN_TEST(test_transport_layer_send_data_bounds_transmitted_byte_count);
+    RUN_TEST(test_transport_layer_minimum_payload_round_trip);
+    RUN_TEST(test_transport_layer_received_payload_size_boundary);
+    RUN_TEST(test_transport_layer_available_threshold_boundary);
+    RUN_TEST(test_transport_layer_short_stream_preserves_reception_buffer);
+    RUN_TEST(test_transport_layer_reception_resumes_after_short_stall);
+
+    // TransportLayer configuration matrix
+    RUN_TEST(test_transport_layer_default_template_parameters);
+    RUN_TEST(test_transport_layer_minimum_payload_capacity);
+    RUN_TEST(test_transport_layer_maximum_payload_round_trip);
+    RUN_TEST(test_transport_layer_reflected_crc_round_trip);
+
+#ifdef RUN_WIDE_CRC_TESTS
+    RUN_TEST(test_transport_layer_crc32_round_trip);
+#endif
 
     return UNITY_END();
 }

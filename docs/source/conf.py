@@ -4,7 +4,7 @@
 project = 'ataraxis-transport-layer-mc'
 copyright = '2026, Sun (NeuroAI) lab'
 author = 'Ivan Kondratyev, Jasmine Si'
-release = '4.0.0'
+release = '4.0.1'
 
 # -- General configuration ---------------------------------------------------
 extensions = [

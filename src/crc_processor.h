@@ -241,8 +241,8 @@ class CRCProcessor final
          * @brief Computes the checksum value that verifying an intact packet produces.
          *
          * Verification runs the checksum calculation over the packet together with its checksum postamble. The value
-         * this produces for an intact packet is determined by the polynomial and the final XOR value alone, so it is
-         * resolved once at initialization and reused for every verification.
+         * this produces for an intact packet is determined by the polynomial, the reflection setting, and the final XOR
+         * value alone, so it is resolved once at initialization and reused for every verification.
          *
          * @returns the checksum value that indicates an intact packet.
          */

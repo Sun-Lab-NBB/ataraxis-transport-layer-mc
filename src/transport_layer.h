@@ -373,7 +373,8 @@ class TransportLayer final
          * communication interface is likely to store a well-formed packet. It is safe to call this method cyclically
          * (as part of a loop) until a packet is received.
          *
-         * @warning Calling this method resets the instance's reception buffer, discarding any unprocessed data.
+         * @warning Calling this method discards any unprocessed data in the instance's reception buffer, unless the
+         * communication interface holds fewer bytes than a packet requires.
          *
          * @note The size of the received payload can be queried using the get_bytes_in_reception_buffer() method.
          *
@@ -396,9 +397,20 @@ class TransportLayer final
 
             ResetReceptionBuffer();
 
-            if (!ParsePacket()) return false;
+            // Discards the unusable packet on failure. Without the reset, the payload size tracker keeps pointing at
+            // the raw COBS-encoded packet, so a caller that ignores the return value reads those bytes back as though
+            // they were a decoded payload.
+            if (!ParsePacket())
+            {
+                ResetReceptionBuffer();
+                return false;
+            }
 
-            if (!ValidatePacket()) return false;
+            if (!ValidatePacket())
+            {
+                ResetReceptionBuffer();
+                return false;
+            }
 
             _runtime_status = static_cast<uint8_t>(kTransportStatusCodes::kPacketReceived);
             return true;

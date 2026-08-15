@@ -27,14 +27,15 @@ uint8_t test_array[4] = {0, 0, 0, 0};
 /// Stores the test data used to verify struct serialization.
 struct TestStruct
 {
-        bool test_flag   = true;  ///< Determines whether the test flag is set.
+        bool test_flag = true;  ///< Determines whether the test flag is set.
+        // NOLINTNEXTLINE(*-magic-numbers)
         float test_float = 6.66;  ///< Stores the floating-point value used for serialization testing.
 } PACKED_STRUCT test_struct;
 
 /// Initializes the serial communication interface.
 void setup()
 {
-    Serial.begin(115200);
+    Serial.begin(115200);  // NOLINT(*-magic-numbers)
 }
 
 /// Receives, processes, and re-transmits serialized data to demonstrate the TransportLayer API.
@@ -53,7 +54,7 @@ void loop()
     transport_layer.ReadData(test_struct);
 
     // Re-transmits the same data in the same order except for the test_scalar which is changed to a new value.
-    test_scalar = 987654321;
+    test_scalar = 987654321;  // NOLINT(*-magic-numbers)
     transport_layer.WriteData(test_scalar);
     transport_layer.WriteData(test_array);
     transport_layer.WriteData(test_struct);
